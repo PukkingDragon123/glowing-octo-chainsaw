@@ -41,7 +41,7 @@ export class Hud {
       h('span', { class: 'wallet-plus', 'aria-hidden': 'true' }, '+'),
     );
     this.soundBtn = h('button', { class: 'icon-btn', 'aria-label': 'Sound effects', 'aria-pressed': 'true', onclick: cb.onSound }, '♪');
-    this.musicBtn = h('button', { class: 'icon-btn', 'aria-label': 'Store music', 'aria-pressed': 'false', onclick: cb.onMusic }, '♫');
+    this.musicBtn = h('button', { class: 'icon-btn hud-extra', 'aria-label': 'Store music', 'aria-pressed': 'false', onclick: cb.onMusic }, '♫');
     this.top = h(
       'div',
       { class: 'hud-top' },
@@ -50,7 +50,7 @@ export class Hud {
         'div',
         { class: 'hud-right' },
         this.wallet,
-        h('button', { class: 'icon-btn', 'aria-label': 'Your receipts', onclick: cb.onReceipts }, '≡'),
+        h('button', { class: 'icon-btn hud-extra', 'aria-label': 'Your receipts', onclick: cb.onReceipts }, '≡'),
         this.soundBtn,
         this.musicBtn,
         h('button', { class: 'icon-btn', 'aria-label': 'How it works', onclick: cb.onHelp }, '?'),

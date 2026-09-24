@@ -27,6 +27,7 @@ import {
   wetFloorSign,
 } from './props';
 import { buildFacade, type Facade } from './facade';
+import { StoreCat } from './cat';
 import { PRODUCTS, productById } from '../products';
 import type { Flavor, ProductDef } from '../products/types';
 
@@ -90,6 +91,8 @@ export class Store {
   onRegister: () => void = () => {};
   onTV: () => void = () => {};
   onSection: (s: SectionInfo) => void = () => {};
+  onPet: () => void = () => {};
+  private storeCat = new StoreCat(11.2, -0.55);
   private lastSection = '';
   private camLook = new THREE.Vector3();
   private introCam = { pos: new THREE.Vector3(0, 2.1, 17), look: new THREE.Vector3(0, 2.2, STORE.frontZ) };
@@ -130,6 +133,7 @@ export class Store {
 
     this.facade = buildFacade();
     this.scene.add(this.facade.group);
+    this.scene.add(this.storeCat.group, this.storeCat.particles);
 
     this.bindInput();
     this.updateCamera(0);
@@ -436,12 +440,23 @@ export class Store {
     const rect = this.canvas.getBoundingClientRect();
     this.ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.ndc, this.camera);
-    const targets = [...this.hitTargets, this.tvMesh, this.registerMesh];
+    const targets = [...this.hitTargets, this.tvMesh, this.registerMesh, this.storeCat.hit];
     const hits = this.raycaster.intersectObjects(targets, false);
     const hit = hits[0];
     if (!hit) {
       this.setHover(null, clientX, clientY);
       this.canvas.style.cursor = '';
+      return;
+    }
+    if (hit.object === this.storeCat.hit) {
+      this.setHover(null, clientX, clientY);
+      this.canvas.style.cursor = 'pointer';
+      if (click) {
+        this.storeCat.pet();
+        audio.play('blip', { rate: 1.6 });
+        audio.play('ding', { rate: 1.3 });
+        this.onPet();
+      }
       return;
     }
     if (hit.object === this.tvMesh || hit.object === this.registerMesh) {
@@ -529,6 +544,16 @@ export class Store {
 
   // -----------------------------------------------------------------------------------------------
 
+  /** Portrait screens get a wider field of view so a useful slice of the aisle stays visible. */
+  fitAspect(aspect: number) {
+    const dist = CAM_Z - STORE.shelfFrontZ;
+    const minHalfWidth = 2.6;
+    const needV = 2 * Math.atan(Math.tan(Math.atan(minHalfWidth / dist)) / aspect);
+    this.camera.fov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(needV), 36, 72);
+    this.camera.aspect = aspect;
+    this.camera.updateProjectionMatrix();
+  }
+
   private updateCamera(dt: number) {
     if (this.phase !== 'aisle') {
       this.camera.position.copy(this.introCam.pos);
@@ -574,6 +599,7 @@ export class Store {
     this.cat.arm.rotation.x = -0.4 + Math.sin(time * 5) * 0.5;
     for (const r of this.rollers) r.rotation.x += dt * 2;
     this.adScreen.update(dt);
+    if (this.phase === 'aisle') this.storeCat.update(dt, this.camX);
     const neon = this.facade.neon.material as THREE.MeshBasicMaterial;
     neon.color.setScalar(Math.sin(time * 13) > -0.92 ? 1 : 0.35);
     // hover animation

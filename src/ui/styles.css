@@ -1218,8 +1218,27 @@ button {
     display: none;
   }
   .icon-btn {
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
+    font-size: 14px;
+  }
+  .hud-top {
+    padding: calc(8px + var(--safe-top)) 10px 0;
+    gap: 6px;
+  }
+  .hud-right {
+    gap: 4px;
+  }
+  .hud-extra {
+    display: none;
+  }
+  .wallet-screen {
+    padding: 3px 8px 1px 6px;
+    gap: 5px;
+  }
+  .wallet-plus {
+    width: 26px;
+    font-size: 16px;
   }
   .panel {
     top: auto;

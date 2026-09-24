@@ -60,6 +60,7 @@ export class Panel {
   private lockBox!: HTMLElement;
   private exportsBox!: HTMLElement;
   private posterImg!: HTMLImageElement;
+  private posterHint!: HTMLElement;
   private status: 'idle' | 'revealing' | 'done' = 'idle';
   private owned = true;
   private image: HTMLImageElement | null = null;
@@ -173,6 +174,7 @@ export class Panel {
 
     // exports
     this.posterImg = h('img', { class: 'poster-preview', alt: 'Your QR poster', hidden: true });
+    this.posterHint = h('p', { class: 'note', hidden: true }, 'Right-click or long-press the poster to save it.');
     this.exportsBox = h(
       'div',
       { class: 'exports' },
@@ -186,6 +188,7 @@ export class Panel {
       h('div', { class: 'sec-label' }, 'TAKE IT HOME', h('button', { class: 'btn btn-paper btn-sm', onclick: () => this.cb.onExport('copytext') }, 'Copy text')),
       this.exportsBox,
       this.posterImg,
+      this.posterHint,
       h('div', { class: 'receipt-foot' }, 'THANK YOU FOR SHOPPING', h('br'), 'AT QR MARKET ♥', h('div', { class: 'barcode' })),
     );
     this.setStatus('idle');
@@ -267,6 +270,7 @@ export class Panel {
 
   setPosterPreview(url: string | null) {
     this.posterImg.hidden = !url;
+    this.posterHint.hidden = !url;
     if (url) this.posterImg.src = url;
   }
 

@@ -115,6 +115,10 @@ export class App {
     this.store.onRegister = () => this.openShop();
     this.store.onTV = () => showAd(this.state, () => {});
     this.store.onSection = (s) => this.hud.setSection(s.id);
+    this.store.onPet = () => {
+      if (this.state.pet()) toast('Purr! The store cat tipped you 5 QRBucks', 'good', coinIcon(14));
+      else toast('Purrrr ♥', 'info');
+    };
 
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('pointerdown', () => audio.unlock(), { passive: true });
@@ -131,8 +135,7 @@ export class App {
     if (this.mode === 'showcase') this.pixel.setTargetLines(this.showcase.focusMode ? 460 : 330, 1, 4);
     else this.pixel.setTargetLines(250, 2, 5);
     this.pixel.resize(w, h2);
-    this.store.camera.aspect = this.pixel.aspect;
-    this.store.camera.updateProjectionMatrix();
+    this.store.fitAspect(this.pixel.aspect);
     this.showcase.resize(this.pixel.aspect);
     this.updateOcclusion();
   }

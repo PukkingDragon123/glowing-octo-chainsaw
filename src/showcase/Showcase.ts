@@ -121,8 +121,10 @@ export class Showcase {
     const h = this.item.hero;
     const yaw = h.yaw ?? 0;
     const pitch = h.pitch ?? 0.35;
-    // back off a little when UI covers part of the screen
-    const dist = h.distance / (0.55 + 0.45 * this.visible);
+    // back off when UI covers part of the screen, and far enough that ~4.4 units fit across
+    const vf = THREE.MathUtils.degToRad(this.camera.fov);
+    const halfH = Math.atan(Math.tan(vf / 2) * this.camera.aspect * (this.visibleX ?? 1));
+    const dist = Math.max(h.distance / (0.55 + 0.45 * this.visible), 2.2 / Math.tan(halfH));
     const pos = new THREE.Vector3(
       h.target.x + Math.sin(yaw) * Math.cos(pitch) * dist,
       h.target.y + Math.sin(pitch) * dist,
@@ -200,9 +202,11 @@ export class Showcase {
 
   /** Shift the projection so the stage centres in the part of the screen not covered by UI. */
   private visible = 1;
+  private visibleX = 1;
 
   setOcclusion(cssW: number, cssH: number, left: number, bottom: number) {
     this.visible = Math.min((cssW - left) / cssW, (cssH - bottom) / cssH);
+    this.visibleX = (cssW - left) / cssW;
     if (!left && !bottom) this.camera.clearViewOffset();
     else this.camera.setViewOffset(cssW, cssH, -left / 2, bottom / 2, cssW, cssH);
     this.camera.updateProjectionMatrix();
@@ -210,6 +214,7 @@ export class Showcase {
 
   resize(aspect: number) {
     this.camera.aspect = aspect;
+    this.camera.fov = aspect < 1 ? 48 : 35;
     this.camera.updateProjectionMatrix();
   }
 }

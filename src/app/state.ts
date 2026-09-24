@@ -20,6 +20,7 @@ export interface SaveData {
   made: number;
   receipts: Receipt[];
   visits: number;
+  petDay: string;
 }
 
 const KEY = 'qr-market-save-v1';
@@ -30,7 +31,7 @@ function today() {
 }
 
 function fresh(): SaveData {
-  return { bucks: CONFIG.startingBucks, unlocked: [], adsDay: today(), adsWatched: 0, dailyClaimed: '', sound: true, music: false, made: 0, receipts: [], visits: 0 };
+  return { bucks: CONFIG.startingBucks, unlocked: [], adsDay: today(), adsWatched: 0, dailyClaimed: '', sound: true, music: false, made: 0, receipts: [], visits: 0, petDay: '' };
 }
 
 type Listener = (s: SaveData) => void;
@@ -120,6 +121,15 @@ export class GameState {
     this.data.adsWatched++;
     this.data.bucks += CONFIG.adReward;
     this.save();
+  }
+
+  /** Petting the store cat gives a small tip once a day. */
+  pet(): boolean {
+    if (this.data.petDay === today()) return false;
+    this.data.petDay = today();
+    this.data.bucks += 5;
+    this.save();
+    return true;
   }
 
   addReceipt(r: Receipt) {
