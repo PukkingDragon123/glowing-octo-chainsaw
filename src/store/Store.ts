@@ -183,7 +183,7 @@ export class Store {
   }
 
   private addTag(product: ProductDef, x: number, y: number, z: number, ry = 0) {
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.153), new THREE.MeshBasicMaterial({ map: priceTagTexture(product.name, product.price, this.owns(product)) }));
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.131), new THREE.MeshBasicMaterial({ map: priceTagTexture(product.name, product.price, this.owns(product)) }));
     mesh.position.set(x, y, z);
     mesh.rotation.y = ry;
     this.scene.add(mesh);

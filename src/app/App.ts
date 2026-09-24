@@ -9,7 +9,7 @@ import { PRODUCTS, productById } from '../products';
 import type { Flavor, ProductContext, ProductDef } from '../products/types';
 import type { PixelArt } from '../qr/pixelCodec';
 import { GameState } from './state';
-import { buildPayload, defaultContent, DEFAULT_LINK, type ContentState } from './content';
+import { buildPayload, defaultContent, DEFAULT_LINK, postcardBase, type ContentState } from './content';
 import { Hud } from '../ui/Hud';
 import { Panel } from '../ui/Panel';
 import { anyModalOpen, closeTopModal, toast } from '../ui/overlay';
@@ -510,7 +510,6 @@ export class App {
   async useDemoArt(frames = 1) {
     const { demoPixelArt } = await import('../qr/demoArt');
     const { pixelArtUrl } = await import('../qr/pixelCodec');
-    const { postcardBase } = await import('./content');
     const art = demoPixelArt(frames);
     if (frames > 1) {
       this.content.mode = 'video';

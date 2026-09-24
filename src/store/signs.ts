@@ -48,25 +48,22 @@ export function signMesh(text: string, height: number, s: SignStyle, emissive = 
   return mesh;
 }
 
-/** Yellow shelf-edge price tag, like every convenience store. */
-export function priceTagTexture(name: string, price: number, owned: boolean): THREE.Texture {
-  const w = 40;
-  const h = 18;
+/** Yellow shelf-edge price tag, like every convenience store (drawn ~1:1 with its size on screen). */
+export function priceTagTexture(_name: string, price: number, owned: boolean): THREE.Texture {
+  const w = 32;
+  const h = 14;
   const p = new Painter(w, h);
   const free = price === 0 || owned;
   const bg = free ? '#ffe45e' : '#ff5d73';
   p.clear('#3b3024');
   p.rect(1, 1, w - 2, h - 2, bg);
-  p.rect(1, 1, w - 2, 4, free ? '#ffd23f' : '#e63950');
-  const short = name.length > 12 ? name.slice(0, 11) + '.' : name;
-  p.text(short.toUpperCase(), 3, 1, { font: FONT_TINY, color: free ? '#3b3024' : '#ffffff' });
+  p.rect(1, h - 3, w - 2, 2, free ? '#e8c43a' : '#d63c55');
   if (free) {
-    p.text(owned && price > 0 ? 'OWNED' : 'FREE', w / 2, 8, { font: FONT_BIG, color: '#3b3024', align: 'center' });
+    p.text(owned && price > 0 ? 'MINE' : 'FREE', w / 2, 3, { font: FONT_BIG, color: '#3b3024', align: 'center' });
   } else {
-    // coin icon + price
-    p.disc(7, 11.5, 3.5, '#ffd23f');
-    p.disc(7, 11.5, 2, '#f2a900');
-    p.text(String(price), 13, 8, { font: FONT_BIG, color: '#ffffff' });
+    p.disc(6.5, 6.5, 3.5, '#ffd23f');
+    p.disc(6.5, 6.5, 2, '#f2a900');
+    p.text(String(price), 20, 3, { font: FONT_BIG, color: '#ffffff', align: 'center' });
   }
   return p.texture();
 }
