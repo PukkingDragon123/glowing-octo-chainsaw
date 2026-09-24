@@ -113,6 +113,23 @@ export class PieceSwarm {
     this.quat[i].setFromEuler(new THREE.Euler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28));
   }
 
+  /** Knock every visible piece loose from where it is now, with a velocity chosen per piece. */
+  kick(velocity: (i: number, pos: THREE.Vector3) => THREE.Vector3, spin = 8) {
+    const p = new THREE.Vector3();
+    for (let i = 0; i < this.count; i++) {
+      if (this.state[i] === HIDDEN) continue;
+      this.positionOf(i, p);
+      const v = velocity(i, p);
+      this.state[i] = PHYSICS;
+      this.vel[i * 3] = v.x;
+      this.vel[i * 3 + 1] = v.y;
+      this.vel[i * 3 + 2] = v.z;
+      this.ang[i * 3] = (Math.random() - 0.5) * spin;
+      this.ang[i * 3 + 1] = (Math.random() - 0.5) * spin;
+      this.ang[i * 3 + 2] = (Math.random() - 0.5) * spin;
+    }
+  }
+
   /** Place a piece directly at its target (finished state). */
   settle(i: number) {
     const t = this.opts.targets[i];
@@ -394,6 +411,7 @@ export class QRSwarm {
   readonly swarms: PieceSwarm[] = [];
   readonly spots: ModuleSpot[];
   private map: { s: number; i: number }[] = [];
+  private backs: number[][] = [];
   onLand: ((spot: number) => void) | null = null;
   onBounce: ((spot: number, speed: number) => void) | null = null;
 
@@ -420,6 +438,7 @@ export class QRSwarm {
       });
       g.idx.forEach((k, i) => (this.map[k] = { s: gi, i }));
       const back: number[] = g.idx;
+      this.backs[gi] = back;
       sw.onLand = (i) => this.onLand?.(back[i]);
       sw.onBounce = (i, sp) => this.onBounce?.(back[i], sp);
       this.swarms.push(sw);
@@ -446,6 +465,10 @@ export class QRSwarm {
 
   hideAll() {
     for (const s of this.swarms) s.hideAll();
+  }
+
+  kick(velocity: (spot: number, pos: THREE.Vector3) => THREE.Vector3, spin = 8) {
+    this.swarms.forEach((sw, si) => sw.kick((i, pos) => velocity(this.backs[si][i], pos), spin));
   }
 
   settleAll() {

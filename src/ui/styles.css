@@ -1322,3 +1322,68 @@ button {
     transition: none !important;
   }
 }
+
+/* ---------------------------------------------------------------- catalog */
+.catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+}
+.catalog-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: start;
+  text-align: left;
+  padding: 10px;
+  background: #fff;
+  border: 3px solid var(--ink);
+  clip-path: var(--notch);
+}
+.catalog-card:hover {
+  background: var(--tag);
+}
+.catalog-card > i {
+  width: 18px;
+  height: 26px;
+  background: var(--c);
+  box-shadow: 0 0 0 2px var(--ink);
+  margin-top: 2px;
+}
+.cc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.cc-body b {
+  font-family: var(--f-display);
+  font-size: 17px;
+}
+.cc-body span {
+  font-family: var(--f-label);
+  font-size: 9px;
+  color: var(--muted);
+}
+.cc-body em {
+  font-style: normal;
+  font-family: var(--f-receipt);
+  font-size: 16px;
+  line-height: 1.05;
+  color: var(--ink-2);
+}
+.cc-price {
+  font-family: var(--f-label);
+  font-size: 10px;
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 3px 5px 2px;
+  border: 2px solid var(--ink);
+  background: var(--vfd);
+  white-space: nowrap;
+}
+.cc-price.locked {
+  background: var(--sale);
+  color: #fff;
+}

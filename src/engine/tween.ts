@@ -103,7 +103,9 @@ export const damp = (current: number, target: number, lambda: number, dt: number
 
 /** Deterministic PRNG so layouts look the same on every visit. */
 export function rng(seed: number) {
-  let s = seed >>> 0 || 1;
+  // hash the seed so small, consecutive seeds still give unrelated sequences
+  let s = Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) >>> 0 || 1;
+  s = Math.imul(s ^ (s >>> 13), 0xc2b2ae35) >>> 0 || 1;
   return () => {
     s ^= s << 13;
     s >>>= 0;

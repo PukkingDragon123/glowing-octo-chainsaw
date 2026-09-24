@@ -250,3 +250,24 @@ export function openReceipts(state: GameState, onOpen: (productId: string, flavo
   }
   const modal = openModal(`Your receipts (${state.data.made} made)`, list);
 }
+
+export function openCatalog(products: ProductDef[], owns: (p: ProductDef) => boolean, onOpen: (id: string) => void) {
+  const sectionName: Record<string, string> = { counter: 'Checkout', media: 'Photo + Video', snacks: 'Snacks', cereal: 'Cereal', fresh: 'Fresh + Hot', cooler: 'Cold Drinks', freezer: 'Frozen', premium: 'Premium' };
+  const grid = h('div', { class: 'catalog' });
+  const sorted = products.slice().sort((a, b) => a.price - b.price);
+  for (const p of sorted) {
+    const c = p.flavors[0].c;
+    const swatch = c.bg ?? c.main ?? c.bag ?? Object.values(c)[0];
+    const owned = owns(p);
+    grid.append(
+      h(
+        'button',
+        { class: 'catalog-card', onclick: () => (modal.close(), onOpen(p.id)) },
+        h('i', { style: `--c:${swatch}` }),
+        h('span', { class: 'cc-body' }, h('b', null, p.name), h('span', null, `${sectionName[p.section] ?? p.section} · ${p.flavors.length} flavors`), h('em', null, p.reveal)),
+        h('span', { class: 'cc-price' + (owned ? '' : ' locked') }, p.price === 0 ? 'FREE' : owned ? 'OWNED' : [coinIcon(12), String(p.price)]),
+      ),
+    );
+  }
+  const modal = openModal('Catalog', grid, { wide: true });
+}

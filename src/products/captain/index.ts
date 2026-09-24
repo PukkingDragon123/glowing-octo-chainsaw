@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { Painter, shade } from '../../engine/Painter';
+import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
+import { LAYER_NO_OUTLINE } from '../../engine/PixelRenderer';
 import { voxelMesh } from '../../engine/voxel';
 import { ease } from '../../engine/tween';
 import { audio } from '../../engine/audio';
@@ -144,6 +146,21 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     if (clacks++ % 6 === 0) audio.play('clack', { minGap: 0.03 });
   };
 
+  // --- speech bubble
+  const bubbleArt = new Painter(64, 26);
+  bubbleArt.roundRect(0, 0, 64, 20, 5, INK);
+  bubbleArt.roundRect(1, 1, 62, 18, 4, '#ffffff');
+  bubbleArt.poly([[14, 19], [22, 19], [12, 26]], INK);
+  bubbleArt.poly([[15, 18], [21, 18], [14, 24]], '#ffffff');
+  bubbleArt.text('SCAN ME,', 32, 3, { font: FONT_TINY, color: INK, align: 'center' });
+  bubbleArt.text('MATEY!', 32, 10, { font: FONT_BIG, color: '#e63950', align: 'center' });
+  const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: bubbleArt.texture(), transparent: true, alphaTest: 0.5, depthWrite: false }));
+  bubble.scale.set(1.1, 0.45, 1);
+  bubble.position.set(1.62, 1.62, -0.05);
+  bubble.visible = false;
+  bubble.layers.set(LAYER_NO_OUTLINE);
+  root.add(bubble);
+
   // --- mascot pops up at the end
   const captain = captainMesh();
   captain.position.set(2.05, -1.6, -0.1);
@@ -225,6 +242,9 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
       captain.rotation.y = -0.5 + t * Math.PI * 2;
       captain.position.y = Math.sin(t * Math.PI) * 0.35;
     }, ease.inOutCubic, tg);
+    bubble.visible = true;
+    audio.play('blip', { rate: 1.4 });
+    await tweens.tween(0.35, (t) => bubble.scale.set(1.1 * t, 0.45 * t, 1), ease.outBack, tg);
     done = true;
   }
 
@@ -237,7 +257,28 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     captain.visible = true;
     captain.position.y = 0;
     captain.rotation.y = -0.5;
+    bubble.visible = true;
+    bubble.scale.set(1.1, 0.45, 1);
     done = true;
+  }
+
+  let stirring = false;
+  async function stir() {
+    if (!done || stirring) return;
+    stirring = true;
+    audio.play('splash');
+    swarm.kick((_i, p) => {
+      const dx = p.x - bowlPos.x;
+      const dz = p.z - bowlPos.z;
+      // swirl around the bowl centre
+      return new THREE.Vector3(-dz * 3 + (Math.random() - 0.5) * 0.3, 0.3 + Math.random() * 0.4, dx * 3 + (Math.random() - 0.5) * 0.3);
+    }, 6);
+    await tweens.wait(1.5, tg);
+    audio.play('whoosh');
+    const orderIn = orderSpots(spots.map((s, i) => ({ ...s, i })), 'spiral').map((s) => s.i);
+    await swarm.assemble(orderIn, 1.6, 0.5, 0.15);
+    audio.play('ding');
+    stirring = false;
   }
 
   return {
@@ -245,6 +286,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     reveal,
     finish,
     actionLabel: 'Pour it!',
+    extra: { label: 'Stir it!', run: stir },
     hero: { target: new THREE.Vector3(0.1, 0.85, 0.1), distance: 5.6, yaw: -0.15, pitch: 0.42 },
     update(dt) {
       time += dt;
@@ -253,7 +295,10 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
       if (done) captain.position.y = Math.abs(Math.sin(time * 2.2)) * 0.05;
     },
     focusView: () => ({ center: new THREE.Vector3(bowlPos.x, surfaceY, bowlPos.z), normal: new THREE.Vector3(0, 1, 0), size: inner * 1.02, up: new THREE.Vector3(0, 0, -1) }),
-    setScanMode: (on) => swarm.setScanMode(on),
+    setScanMode: (on) => {
+      swarm.setScanMode(on);
+      bubble.visible = !on && done;
+    },
     dispose() {
       swarm.dispose();
     },

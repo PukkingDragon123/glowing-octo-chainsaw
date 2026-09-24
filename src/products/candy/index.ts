@@ -229,11 +229,30 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     done = true;
   }
 
+  let shaking = false;
+  async function shake() {
+    if (!done || shaking) return;
+    shaking = true;
+    audio.play('whoosh');
+    swarm.kick((_k, p) => {
+      const dx = p.x - trayPos.x;
+      const dz = p.z - trayPos.z;
+      const d = Math.hypot(dx, dz) + 0.1;
+      return new THREE.Vector3((dx / d) * (0.8 + Math.random() * 1.8) + (Math.random() - 0.5), 1.4 + Math.random() * 2.2, (dz / d) * (0.8 + Math.random() * 1.8) + (Math.random() - 0.5));
+    }, 14);
+    await tweens.wait(1.6, tg);
+    const orderIn = orderSpots(spots.map((s, i) => ({ ...s, i })), 'random', Math.floor(Math.random() * 1000)).map((s) => s.i);
+    await swarm.assemble(orderIn, 1.4, 0.55, 0.25);
+    audio.play('ding');
+    shaking = false;
+  }
+
   return {
     root,
     reveal,
     finish,
     actionLabel: 'Rip it open!',
+    extra: { label: 'Shake it!', run: shake },
     hero: { target: new THREE.Vector3(-0.2, 0.75, 0.1), distance: 5.9, yaw: 0.12, pitch: 0.45 },
     update(dt) {
       time += dt;

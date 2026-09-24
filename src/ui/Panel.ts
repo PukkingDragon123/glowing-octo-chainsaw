@@ -17,6 +17,7 @@ export interface PanelCallbacks {
   onExport(kind: 'poster' | 'plain' | 'svg' | 'copy' | 'copytext'): void;
   onUnlock(): void;
   onGetBucks(): void;
+  onExtra(): void;
 }
 
 const MODES: { id: ContentMode; label: string; icon: string }[] = [
@@ -51,6 +52,7 @@ export class Panel {
   private actionBtn!: HTMLButtonElement;
   private scanBtn!: HTMLButtonElement;
   private replayBtn!: HTMLButtonElement;
+  private extraBtn!: HTMLButtonElement;
   private editor!: HTMLElement;
   private tabs = new Map<ContentMode, HTMLButtonElement>();
   private flavorBtns = new Map<string, HTMLButtonElement>();
@@ -168,8 +170,9 @@ export class Panel {
     this.actionBtn = h('button', { class: 'btn btn-big btn-red', onclick: () => this.onAction() }, '▶ ' + 'Open it!');
     this.scanBtn = h('button', { class: 'btn btn-mint', onclick: () => this.cb.onScanMode(), disabled: true }, '◎ Scan mode');
     this.replayBtn = h('button', { class: 'btn btn-paper', onclick: () => this.cb.onReveal(), disabled: true }, '↻ Replay');
+    this.extraBtn = h('button', { class: 'btn btn-paper', hidden: true, disabled: true, onclick: () => this.cb.onExtra() }, '✦ Extra');
     this.badges = h('div', { class: 'scan-badges' });
-    clear(this.footer).append(h('div', { class: 'actions' }, this.actionBtn, h('div', { class: 'row' }, this.scanBtn, this.replayBtn)));
+    clear(this.footer).append(h('div', { class: 'actions' }, this.actionBtn, h('div', { class: 'row' }, this.scanBtn, this.extraBtn, this.replayBtn)));
     this.receipt.append(h('hr', { class: 'rule' }), h('div', { class: 'sec-label' }, 'SCAN CHECK'), this.badges);
 
     // exports
@@ -230,6 +233,15 @@ export class Panel {
     else this.cb.onReveal();
   }
 
+  /** Product-specific fun action (shown once the code is built). */
+  setExtra(label: string | null) {
+    this.extraBtn.hidden = !label;
+    if (label) {
+      this.extraBtn.textContent = '✦ ' + label;
+      this.replayBtn.hidden = true;
+    } else this.replayBtn.hidden = false;
+  }
+
   setStatus(s: 'idle' | 'revealing' | 'done', actionLabel?: string) {
     this.status = s;
     if (!this.actionBtn) return;
@@ -241,6 +253,7 @@ export class Panel {
     else this.actionBtn.textContent = '↻ Open another';
     this.scanBtn.disabled = s !== 'done';
     this.replayBtn.disabled = s !== 'done';
+    this.extraBtn.disabled = s !== 'done';
     for (const b of this.exportsBox.querySelectorAll('button')) (b as HTMLButtonElement).disabled = locked;
   }
 

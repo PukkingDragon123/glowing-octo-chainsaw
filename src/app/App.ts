@@ -13,7 +13,7 @@ import { buildPayload, defaultContent, DEFAULT_LINK, type ContentState } from '.
 import { Hud } from '../ui/Hud';
 import { Panel } from '../ui/Panel';
 import { anyModalOpen, closeTopModal, toast } from '../ui/overlay';
-import { confirmUnlock, openHelp, openReceipts, openShop, showAd } from '../ui/Shop';
+import { confirmUnlock, openCatalog, openHelp, openReceipts, openShop, showAd } from '../ui/Shop';
 import { h, coinIcon } from '../ui/dom';
 import { isProbablyUrl } from '../qr/payload';
 
@@ -76,6 +76,13 @@ export class App {
       },
       onHelp: () => openHelp(),
       onReceipts: () => openReceipts(this.state, (pid, fid, text) => this.reopen(pid, fid, text)),
+      onCatalog: () =>
+        openCatalog(PRODUCTS, (p) => this.state.owns(p.id, p.price), (id) => {
+          const go = () => void this.openProduct(id);
+          if (this.mode === 'title') void this.walkIn(true).then(go);
+          else if (this.mode === 'showcase') void this.closeProduct().then(go);
+          else go();
+        }),
       onSection: (id) => this.store.jumpToSection(id),
       onStep: (d) => this.store.step(d),
       onWalkIn: () => void this.walkIn(false),
@@ -96,6 +103,10 @@ export class App {
       onExport: (k) => void this.exportAs(k),
       onUnlock: () => this.unlockCurrent(),
       onGetBucks: () => this.openShop(),
+      onExtra: () => {
+        if (this.showcase.focusMode) this.toggleFocus(false);
+        void this.showcase.item?.extra?.run();
+      },
     });
     this.state.on((d) => {
       this.hud.setWallet(d.bucks, d.bucks > this.lastBucks);
@@ -213,6 +224,7 @@ export class App {
     this.revealed = false;
     this.revealing = false;
     this.viewOk = null;
+    this.panel.setExtra(this.showcase.item?.extra?.label ?? null);
     this.panel.setStatus('idle', this.showcase.item?.actionLabel);
     this.schedulePosterCheck();
   }

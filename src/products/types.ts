@@ -51,6 +51,8 @@ export interface ShowcaseItem {
   pointer?(kind: 'down' | 'move' | 'up', hit: THREE.Intersection | null, ray: THREE.Ray): boolean;
   /** Short instruction shown before reveal, e.g. "Rip it open!". */
   actionLabel?: string;
+  /** Optional replayable fun action once the code is built (e.g. "Shake it!"). */
+  extra?: { label: string; run: () => Promise<void> | void };
   dispose(): void;
 }
 

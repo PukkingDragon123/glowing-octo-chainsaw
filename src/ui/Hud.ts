@@ -8,6 +8,7 @@ export interface HudCallbacks {
   onMusic(): void;
   onHelp(): void;
   onReceipts(): void;
+  onCatalog(): void;
   onSection(id: SectionInfo['id']): void;
   onStep(dir: number): void;
   onWalkIn(): void;
@@ -50,6 +51,7 @@ export class Hud {
         'div',
         { class: 'hud-right' },
         this.wallet,
+        h('button', { class: 'icon-btn', 'aria-label': 'Catalog of all products', onclick: cb.onCatalog }, '▦'),
         h('button', { class: 'icon-btn hud-extra', 'aria-label': 'Your receipts', onclick: cb.onReceipts }, '≡'),
         this.soundBtn,
         this.musicBtn,
@@ -62,7 +64,7 @@ export class Hud {
         'button',
         { class: 'aisle-chip', role: 'tab', style: `--c:${s.color}`, onclick: () => cb.onSection(s.id), 'aria-label': s.name },
         h('i', { class: 'dot' }),
-        h('span', { class: 'name' }, s.name),
+        h('span', { class: 'name' }, s.name.replace(/&/g, '+')),
       );
       this.chips.set(s.id, chip);
       chipBox.appendChild(chip);
