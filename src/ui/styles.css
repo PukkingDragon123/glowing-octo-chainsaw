@@ -1,0 +1,22 @@
+:root {
+  color-scheme: dark;
+  --night: #141b2d;
+}
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--night);
+  overflow: hidden;
+}
+#app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+.pixel-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  image-rendering: pixelated;
+}
