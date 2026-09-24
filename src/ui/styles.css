@@ -685,6 +685,7 @@ button {
   color: var(--sale-2);
 }
 .drop {
+  display: block;
   margin-top: 10px;
   border: 2px dashed var(--ink);
   background: var(--paper-2);
