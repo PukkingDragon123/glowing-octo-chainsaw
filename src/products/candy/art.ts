@@ -140,3 +140,26 @@ export function crimpStrip(f: Flavor, top: boolean): Painter {
   }
   return p;
 }
+
+/** Tiny 24×32 front for the shelf model. */
+export function packFrontSmall(f: Flavor): Painter {
+  const p = new Painter(24, 32);
+  const set = CANDY_SETS[f.id] ?? CANDY_SETS.original;
+  p.clear(f.c.bag);
+  p.rect(3, 0, 1, 32, shade(f.c.bag, 0.1));
+  const cx = 12;
+  const cy = 22;
+  set.slice(0, 4).forEach((c, i) => {
+    const r = 11 - i * 2;
+    p.ellipse(cx, cy, r, r, c.fun);
+  });
+  p.ellipse(cx, cy, 3, 3, f.c.bag);
+  p.rect(0, cy, 24, 10, f.c.bag);
+  p.roundRect(6, 15, 12, 11, 2, INK);
+  p.roundRect(7, 16, 10, 9, 2, '#fdf6f0');
+  set.forEach((c, i) => p.rect(8 + (i % 3) * 3, 17 + Math.floor(i / 3) * 3, 2, 2, c.fun));
+  p.text('PIXEL', 12, 2, { font: FONT_TINY, color: f.c.text, align: 'center' });
+  p.text('DROPS', 12, 8, { font: FONT_TINY, color: f.c.accent, align: 'center' });
+  p.px(5, 28, set[0].fun).px(18, 29, set[1 % set.length].fun).px(12, 29, '#ffffff');
+  return p;
+}

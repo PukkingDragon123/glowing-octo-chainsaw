@@ -9,7 +9,7 @@ import { layoutModules, orderSpots } from '../common/qrLayout';
 import { QRSwarm, isStructural } from '../common/swarm';
 import { Particles, tray } from '../common/props';
 import { composePoster, posterScale } from '../common/poster';
-import { CANDY_FLAVORS, CANDY_SETS, crimpStrip, packBack, packFront, PACK, INK } from './art';
+import { CANDY_FLAVORS, CANDY_SETS, crimpStrip, packBack, packFront, packFrontSmall, PACK, INK } from './art';
 
 const SIZE = { w: 1.2, h: 1.5, d: 0.36 };
 
@@ -18,13 +18,15 @@ function solid(w: number, h: number, color: string) {
 }
 
 /** Puffy pillow-pack: segmented box squeezed thin at the crimped ends. */
-function packModel(f: Flavor, scale: number, mip: boolean) {
+function packModel(f: Flavor, scale: number, small: boolean) {
   const w = SIZE.w * scale;
   const h = SIZE.h * scale;
   const d = SIZE.d * scale;
   const group = new THREE.Group();
   const side = solid(8, 64, f.c.bagDark);
-  const body = atlasBox(w, h, d, { px: side, nx: side, py: solid(8, 8, f.c.bagDark), ny: solid(8, 8, f.c.bagDark), pz: packFront(f).canvas, nz: packBack(f).canvas }, { segments: [10, 12, 2], mipmaps: mip });
+  const front = small ? packFrontSmall(f).canvas : packFront(f).canvas;
+  const back = small ? front : packBack(f).canvas;
+  const body = atlasBox(w, h, d, { px: side, nx: side, py: solid(8, 8, f.c.bagDark), ny: solid(8, 8, f.c.bagDark), pz: front, nz: back }, { segments: [10, 12, 2] });
   const pos = body.geometry.attributes.position as THREE.BufferAttribute;
   for (let i = 0; i < pos.count; i++) {
     const nx = pos.getX(i) / (w / 2);
@@ -39,9 +41,9 @@ function packModel(f: Flavor, scale: number, mip: boolean) {
   const crimpH = 0.11 * scale;
   const makeCrimp = (top: boolean) => {
     const tex = crimpStrip(f, top).texture();
-    if (mip) {
+    if (small) {
       tex.generateMipmaps = true;
-      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.minFilter = THREE.NearestMipmapNearestFilter;
     }
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, crimpH), new THREE.MeshToonMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide, gradientMap: toonGradient() }));
     m.position.y = top ? h + crimpH / 2 - 0.01 * scale : -crimpH / 2 + 0.01 * scale;

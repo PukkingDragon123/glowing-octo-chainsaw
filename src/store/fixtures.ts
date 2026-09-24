@@ -186,7 +186,7 @@ export function hangingSign(text: string, color: string, x: number, z: number, y
   p.rect(1, 1, p.w - 2, 2, shade(color, 0.2));
   p.text(text, p.w / 2, 5, { font: FONT_BIG, scale: 2, color: '#ffffff', bold: true, align: 'center', shadow: shade(color, -0.35), shadowOffset: [0, 1] });
   const tex = p.texture();
-  const h = 0.32;
+  const h = 0.26;
   const w = (p.w / p.h) * h;
   const board = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.03), [
     new THREE.MeshToonMaterial({ color: shade(color, -0.3) }),

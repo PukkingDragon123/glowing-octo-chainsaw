@@ -25,6 +25,8 @@ export class Showcase {
   readonly controls: OrbitControls;
   item: ShowcaseItem | null = null;
   focusMode = false;
+  /** Only the active scene may take over pointer input. */
+  active = false;
   private key: THREE.DirectionalLight;
   private stage = new THREE.Group();
   private raycaster = new THREE.Raycaster();
@@ -58,17 +60,14 @@ export class Showcase {
 
     // counter top
     const tex = counterTexture();
-    tex.repeat.set(8, 4);
-    const top = new THREE.Mesh(new THREE.BoxGeometry(9, 0.2, 5), new THREE.MeshToonMaterial({ map: tex, gradientMap: toonGradient() }));
-    top.position.set(0, -0.1, 0.3);
+    tex.repeat.set(20, 8);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(22, 0.2, 9), new THREE.MeshToonMaterial({ map: tex, gradientMap: toonGradient() }));
+    top.position.set(0, -0.1, 1.9);
     top.receiveShadow = true;
     this.scene.add(top);
-    const edge = new THREE.Mesh(new THREE.BoxGeometry(9.02, 0.06, 5.02), new THREE.MeshToonMaterial({ color: '#2ec4b6', gradientMap: toonGradient() }));
-    edge.position.set(0, -0.2, 0.3);
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(22.02, 0.06, 9.02), new THREE.MeshToonMaterial({ color: '#2ec4b6', gradientMap: toonGradient() }));
+    edge.position.set(0, -0.2, 1.9);
     this.scene.add(edge);
-    const front = new THREE.Mesh(new THREE.BoxGeometry(9, 1.4, 0.2), new THREE.MeshToonMaterial({ color: '#23304f', gradientMap: toonGradient() }));
-    front.position.set(0, -0.93, 2.7);
-    this.scene.add(front);
 
     // blurred store backdrop: shelves further back
     const b = new Batcher();
@@ -102,6 +101,8 @@ export class Showcase {
   }
 
   setItem(item: ShowcaseItem | null) {
+    this.tweens.cancel('camera');
+    if (!item) this.controls.enabled = false;
     if (this.item) {
       this.stage.remove(this.item.root);
       this.item.dispose();
@@ -120,10 +121,12 @@ export class Showcase {
     const h = this.item.hero;
     const yaw = h.yaw ?? 0;
     const pitch = h.pitch ?? 0.35;
+    // back off a little when UI covers part of the screen
+    const dist = h.distance / (0.55 + 0.45 * this.visible);
     const pos = new THREE.Vector3(
-      h.target.x + Math.sin(yaw) * Math.cos(pitch) * h.distance,
-      h.target.y + Math.sin(pitch) * h.distance,
-      h.target.z + Math.cos(yaw) * Math.cos(pitch) * h.distance,
+      h.target.x + Math.sin(yaw) * Math.cos(pitch) * dist,
+      h.target.y + Math.sin(pitch) * dist,
+      h.target.z + Math.cos(yaw) * Math.cos(pitch) * dist,
     );
     this.flyTo(pos, h.target.clone(), instant ? 0 : 0.9);
   }
@@ -132,8 +135,9 @@ export class Showcase {
     if (!this.item) return null;
     const f = this.item.focusView();
     const vFov = THREE.MathUtils.degToRad(this.camera.fov);
-    const fitH = f.size / 0.78;
-    const fitW = f.size / 0.78 / Math.min(1, this.camera.aspect);
+    const fill = 0.8 * this.visible;
+    const fitH = f.size / fill;
+    const fitW = f.size / fill / Math.min(1, this.camera.aspect);
     const dist = Math.max(fitH, fitW) / 2 / Math.tan(vFov / 2);
     const pos = f.center.clone().add(f.normal.clone().multiplyScalar(dist));
     // Looking straight down is degenerate for a y-up camera; tip it a hair so screen-up = f.up.
@@ -155,12 +159,12 @@ export class Showcase {
     };
     if (dur <= 0) {
       apply(1);
-      this.controls.enabled = true;
+      this.controls.enabled = this.active;
       this.controls.update();
       return;
     }
     void this.tweens.tween(dur, apply, ease.inOutCubic, 'camera').then(() => {
-      this.controls.enabled = true;
+      this.controls.enabled = this.active;
       this.controls.update();
     });
   }
@@ -192,6 +196,16 @@ export class Showcase {
     this.item?.update(dt, time);
     if (this.controls.enabled) this.controls.update();
     void this.turntable;
+  }
+
+  /** Shift the projection so the stage centres in the part of the screen not covered by UI. */
+  private visible = 1;
+
+  setOcclusion(cssW: number, cssH: number, left: number, bottom: number) {
+    this.visible = Math.min((cssW - left) / cssW, (cssH - bottom) / cssH);
+    if (!left && !bottom) this.camera.clearViewOffset();
+    else this.camera.setViewOffset(cssW, cssH, -left / 2, bottom / 2, cssW, cssH);
+    this.camera.updateProjectionMatrix();
   }
 
   resize(aspect: number) {

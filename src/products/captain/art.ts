@@ -408,3 +408,37 @@ export function captainVoxels(): VoxelGrid {
   g.box(ox + 19, 16, 5, ox + 21, 16, 6, '#ffffff'); // pointing finger
   return g;
 }
+
+/** Tiny 28×40 front for the shelf model: drawn at roughly 1:1 with its on-screen size. */
+export function boxFrontSmall(f: Flavor): Painter {
+  const p = new Painter(28, 40);
+  p.clear(f.c.bg);
+  p.grid(0, 0, 28, 40, 4, f.c.grid, 1);
+  p.text('CAPTAIN', 14, 1, { font: FONT_TINY, color: f.c.text, align: 'center' });
+  p.text('QR', 14, 7, { font: FONT_BIG, color: f.c.accent, outline: INK, align: 'center' });
+  const arch = new Painter(28, 40);
+  arch.arch(2, 17, 24, 21, f.c.arch);
+  arch.rect(2, 34, 24, 4, f.c.archDark);
+  arch.outline(INK);
+  p.blit(arch, 0, 0);
+  // card with a hint of a QR
+  p.rect(12, 21, 12, 12, INK).rect(13, 22, 10, 10, '#ffffff');
+  for (const [x, y] of [[14, 23], [19, 23], [14, 28]]) p.rect(x, y, 3, 3, INK);
+  p.px(20, 29, INK).px(21, 30, INK).px(19, 30, INK);
+  // captain head with hat
+  p.rect(4, 28, 7, 7, INK).rect(5, 29, 5, 5, '#eba53f');
+  p.px(6, 31, INK).px(8, 31, INK).rect(6, 33, 3, 1, INK);
+  p.rect(4, 26, 7, 2, '#23305e').rect(5, 25, 5, 1, '#f4f6fb').px(7, 26, '#ffd23f');
+  p.px(24, 38, '#ffffff').px(21, 38, '#ffffff').px(18, 38, '#ffffff');
+  return p;
+}
+
+export function boxSideSmall(f: Flavor): Painter {
+  const p = new Painter(10, 40);
+  p.clear(f.c.bg);
+  p.grid(0, 0, 10, 40, 4, f.c.grid, 1);
+  p.rect(1, 10, 8, 20, '#ffffff');
+  for (let y = 12; y < 29; y += 2) p.rect(2, y, 6, 1, '#b8b4c8');
+  p.rect(2, 32, 6, 6, '#ffffff').rect(3, 33, 2, 2, INK).rect(5, 35, 2, 2, INK);
+  return p;
+}

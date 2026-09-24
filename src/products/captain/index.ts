@@ -10,7 +10,7 @@ import { layoutModules, orderSpots, qrDecal } from '../common/qrLayout';
 import { PieceSwarm } from '../common/swarm';
 import { Particles, squareBowl, tileTexture } from '../common/props';
 import { composePoster, posterScale } from '../common/poster';
-import { boxBack, boxBottom, boxFront, boxSide, boxTop, CAPTAIN_FLAVORS, captainVoxels, FRONT, INK } from './art';
+import { boxBack, boxBottom, boxFront, boxFrontSmall, boxSide, boxSideSmall, boxTop, CAPTAIN_FLAVORS, captainVoxels, FRONT, INK } from './art';
 
 const BOX = { w: 1.4, h: 2.0, d: 0.5 };
 
@@ -278,16 +278,12 @@ export const captainQR: ProductDef = {
   shelfSize: [0.36, 0.52],
   shelfModel(f) {
     const s = 0.26;
-    const { group } = cerealBox(f, s, null, false);
-    group.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      const mat = mesh.material as THREE.MeshToonMaterial | undefined;
-      if (mat?.map) {
-        mat.map.minFilter = THREE.LinearMipmapLinearFilter;
-        mat.map.generateMipmaps = true;
-        mat.map.needsUpdate = true;
-      }
-    });
+    const side = boxSideSmall(f).canvas;
+    const top = new Painter(28, 10).clear(shade(f.c.bg, 0.1)).canvas;
+    const body = atlasBox(BOX.w * s, BOX.h * s, BOX.d * s, { px: side, nx: side, py: top, ny: top, pz: boxFrontSmall(f).canvas, nz: boxFrontSmall(f).canvas });
+    body.position.y = (BOX.h * s) / 2;
+    const group = new THREE.Group();
+    group.add(body);
     return group;
   },
   createShowcase,
