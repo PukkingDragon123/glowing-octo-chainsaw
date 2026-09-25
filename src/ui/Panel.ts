@@ -238,7 +238,7 @@ export class Panel {
   setExtra(label: string | null) {
     this.extraBtn.hidden = !label;
     if (label) {
-      this.extraBtn.textContent = '✦ ' + label;
+      this.extraBtn.textContent = '✦ ' + label.replace(/&/g, '+');
       this.replayBtn.hidden = true;
     } else this.replayBtn.hidden = false;
   }
@@ -249,7 +249,8 @@ export class Panel {
     const locked = !this.owned;
     this.actionBtn.disabled = false;
     if (locked) this.actionBtn.textContent = `🔒 Unlock · ${this.product?.price ?? ''} QB`;
-    else if (s === 'idle') this.actionBtn.textContent = '▶ ' + (actionLabel ?? 'Open it!');
+    // the pixel label font draws '&' like '$', so spell it as '+'
+    else if (s === 'idle') this.actionBtn.textContent = '▶ ' + (actionLabel ?? 'Open it!').replace(/&/g, '+');
     else if (s === 'revealing') this.actionBtn.textContent = '⏭ Skip to the code';
     else this.actionBtn.textContent = '↻ Open another';
     this.scanBtn.disabled = s !== 'done';

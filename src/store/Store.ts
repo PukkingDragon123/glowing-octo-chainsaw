@@ -154,6 +154,15 @@ export class Store {
       if (m.isMesh) {
         m.castShadow = true;
         m.receiveShadow = true;
+        // crisp pixel look: pick one mip level with nearest texels instead of blending levels
+        const mats = Array.isArray(m.material) ? m.material : [m.material];
+        for (const mat of mats) {
+          const map = (mat as THREE.MeshToonMaterial).map;
+          if (map && map.generateMipmaps && map.minFilter !== THREE.NearestMipmapNearestFilter) {
+            map.minFilter = THREE.NearestMipmapNearestFilter;
+            map.needsUpdate = true;
+          }
+        }
       }
     });
     const box = new THREE.Box3().setFromObject(model);

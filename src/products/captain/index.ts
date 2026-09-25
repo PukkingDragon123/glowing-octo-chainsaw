@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { Painter, shade } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
-import { LAYER_NO_OUTLINE } from '../../engine/PixelRenderer';
 import { voxelMesh } from '../../engine/voxel';
 import { ease } from '../../engine/tween';
 import { audio } from '../../engine/audio';
@@ -18,6 +17,36 @@ const BOX = { w: 1.4, h: 2.0, d: 0.5 };
 
 function solid(w: number, h: number, color: string) {
   return new Painter(w, h).clear(color).canvas;
+}
+
+/** A flat card shaped like the 64×26 speech-bubble art (rounded body + tail), `w`×`h` units, UVs on the art. */
+function bubbleGeometry(w: number, h: number) {
+  const TW = 64;
+  const TH = 26;
+  // texel coordinates with y up (the canvas texture puts v = 0 at the bottom row)
+  const s = new THREE.Shape();
+  s.moveTo(5, 26);
+  s.lineTo(59, 26);
+  s.quadraticCurveTo(64, 26, 64, 21);
+  s.lineTo(64, 11);
+  s.quadraticCurveTo(64, 6, 59, 6);
+  s.lineTo(21, 6);
+  s.lineTo(12, 0);
+  s.lineTo(13.7, 6);
+  s.lineTo(5, 6);
+  s.quadraticCurveTo(0, 6, 0, 11);
+  s.lineTo(0, 21);
+  s.quadraticCurveTo(0, 26, 5, 26);
+  const g = new THREE.ShapeGeometry(s, 4);
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  const uv = g.attributes.uv as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    uv.setXY(i, x / TW, y / TH);
+    pos.setXY(i, (x / TW - 0.5) * w, (y / TH - 0.5) * h);
+  }
+  return g;
 }
 
 /** The cereal box: atlas-textured body, optional hinged flaps and crisp QR decals. */
@@ -154,11 +183,18 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   bubbleArt.poly([[15, 18], [21, 18], [14, 24]], '#ffffff');
   bubbleArt.text('SCAN ME,', 32, 3, { font: FONT_TINY, color: INK, align: 'center' });
   bubbleArt.text('MATEY!', 32, 10, { font: FONT_BIG, color: '#e63950', align: 'center' });
-  const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: bubbleArt.texture(), transparent: true, alphaTest: 0.5, depthWrite: false }));
-  bubble.scale.set(1.1, 0.45, 1);
+  // A camera-facing card cut to the bubble's outline rather than a sprite: it writes depth and
+  // normals, so the outline pass sees one flat surface instead of drawing the shelf's edges through it.
+  const bubble = new THREE.Mesh(bubbleGeometry(1.1, 0.45), new THREE.MeshBasicMaterial({ map: bubbleArt.texture(), alphaTest: 0.5 }));
   bubble.position.set(1.62, 1.62, -0.05);
   bubble.visible = false;
-  bubble.layers.set(LAYER_NO_OUTLINE);
+  const parentQuat = new THREE.Quaternion();
+  const camQuat = new THREE.Quaternion();
+  bubble.onBeforeRender = (_r, _s, cam) => {
+    bubble.parent!.getWorldQuaternion(parentQuat);
+    bubble.quaternion.copy(parentQuat.invert().multiply(cam.getWorldQuaternion(camQuat)));
+    bubble.updateMatrixWorld();
+  };
   root.add(bubble);
 
   // --- mascot pops up at the end
@@ -244,7 +280,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     }, ease.inOutCubic, tg);
     bubble.visible = true;
     audio.play('blip', { rate: 1.4 });
-    await tweens.tween(0.35, (t) => bubble.scale.set(1.1 * t, 0.45 * t, 1), ease.outBack, tg);
+    await tweens.tween(0.35, (t) => bubble.scale.set(t, t, 1), ease.outBack, tg);
     done = true;
   }
 
@@ -258,7 +294,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     captain.position.y = 0;
     captain.rotation.y = -0.5;
     bubble.visible = true;
-    bubble.scale.set(1.1, 0.45, 1);
+    bubble.scale.set(1, 1, 1);
     done = true;
   }
 

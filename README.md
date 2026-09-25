@@ -9,7 +9,7 @@ Walk in from the street, browse the aisles side-scroller style, pick a product a
 ## Features
 
 - **A walkable 3D pixel store.** Low-res rendering with crisp depth/normal outlines, voxel props, hand-drawn pixel textures and a bitmap font. Eight aisles: checkout (with a waving cat cashier and an ad TV), photo & video, snacks, cereal, fresh & hot, a glass-door cooler, a chest freezer and a velvet-roped premium shelf. There is a store cat. You can pet it.
-- **16 products, ~60 templates.** Every product has its own reveal animation and 3–4 flavors (colorways). See the list below.
+- **16 products, 60 templates.** Every product has its own reveal animation and 3–4 flavors (colorways). See the list below.
 - **Every kind of QR content.** Links (with YouTube / TikTok / LINE / Maps detection), plain text, Wi-Fi logins, contact cards (vCard), photos and videos.
 - **Pixel Postcards & Flipbooks — the QR carries the picture.** A photo is squeezed into a 12–40 px pixel picture (or a video into a few looping frames), palette-quantised, bit-packed, deflated and stored in the link's `#fragment`. Scanning opens the built-in viewer, which decodes it instantly. Nothing is uploaded anywhere.
 - **Scannability you can trust.** Finder and alignment patterns always stay square, scan mode switches pieces to scan-safe colours, and every poster and scan-mode frame is checked with jsQR in the UI (“✓ Poster scans · ✓ 3D view scans”).
@@ -20,24 +20,26 @@ Walk in from the street, browse the aisles side-scroller style, pick a product a
 
 ## Products
 
+16 products, 60 flavors. Free products are open to everyone; premium ones can be previewed and are unlocked with QRBucks.
+
 | Product | Aisle | Price | Reveal |
 | --- | --- | --- | --- |
-| Captain QR | Cereal | Free | Pour the box. Every cocoa square swims into place in the milk. |
+| Captain QR | Cereal | Free | Pour the box. Every cocoa square swims into place in the milk, and Captain QR salutes. |
 | Pixel Drops | Snacks | Free | Rip the pack. Candies bounce, roll around and hop into a rainbow QR. |
-| Choco Block | Snacks | Free | Unwrap the foil: dark and white chocolate squares spell out your code. |
-| Dough-R Code | Snacks | Free | Flip the lid: glazed donut holes pop out and roll into place. |
-| Crunch Bytes | Snacks | Free | The bag puffs up and pops. Chips rain down and stack into your code. |
-| Onigiri QR | Fresh & Hot | Free | Pull the tabs 1-2-3: the nori wrap is your code. |
-| Pixel Postcard | Photo & Video | Free | Flash! The photo slides out and develops, with your code on the frame. |
-| Flipbook Tape | Photo & Video | Free | Insert the tape: your flipbook plays on a tiny TV with the code on the label. |
-| Latte Code | Fresh & Hot | 60 QB | A cocoa stencil dusts your code onto the milk foam. |
+| Choco Block | Snacks | Free | Slide off the sleeve, unfold the foil: dark and white chocolate squares pop up to spell your code. |
+| Dough-R Code | Snacks | Free | Flip the lid: glazed donut holes pop out, bounce around and roll into place. |
+| Crunch Bytes | Snacks | Free | The bag puffs up and pops. Chips rain down and hop into your code. |
+| Onigiri QR | Fresh & Hot | Free | Pull the tabs 1-2-3: the wrapper slides off and the nori wraps on as your code. |
+| Pixel Postcard | Photo & Video | Free | Flash! The photo slides out and develops, with your code printed beside the picture. |
+| Flipbook Tape | Photo & Video | Free | Insert the tape: your flipbook plays on a tiny TV, then the screen turns into your code. |
 | Lucky Scratch | Checkout | 50 QB | Scratch the silver foil with your finger or mouse to reveal the code. |
-| Fizz Pop | Cold Drinks | 80 QB | Crack the can: bubbles float up and freeze into a hovering QR. |
-| Frosty Cubes | Frozen | 90 QB | Tear the ice bag: cubes clatter across the tray and lock into place. |
-| Boba Bliss | Cold Drinks | 100 QB | Shake the cup: tapioca pearls settle into your code. |
+| Latte Code | Fresh & Hot | 60 QB | Milk foams up, a stencil drops on and cocoa dusts your code onto the latte. |
+| Fizz Pop | Cold Drinks | 80 QB | Crack the can: a bubble geyser floats up and freezes into an ice-cold QR wall. |
+| Frosty Cubes | Frozen | 90 QB | Tear the ice bag: cubes clatter across the frosty tray and skate into place. |
+| Boba Bliss | Cold Drinks | 100 QB | Shake the cup, stab the seal: tapioca pearls pour out and roll into your code. |
 | QR Gacha | Checkout | 120 QB | Drop a coin, turn the crank: a capsule pops out with a random rare finish. |
-| Volt Energy | Cold Drinks | 150 QB | Crack it open: lightning prints a neon hologram QR. |
-| Golden Ticket | Premium | 200 QB | Unwrap the golden bar to find an embossed gold QR ticket. |
+| Volt Energy | Cold Drinks | 150 QB | Crack it open: lightning crackles, then a neon hologram QR flickers to life. |
+| Golden Ticket | Premium | 200 QB | Peel back the golden foil: a ticket rises, spins and lands with your code embossed in gold. |
 
 ## Run it
 
@@ -46,6 +48,7 @@ npm install
 npm run dev          # http://localhost:5173
 npm test             # unit tests (QR encoding, payloads, postcard codec)
 npm run test:e2e     # opens every product in headless Chromium and checks the 3D view + poster scan
+node scripts/e2e.mjs --thorough   # every flavor at three code sizes
 npm run build        # static site in dist/
 ```
 
