@@ -4,7 +4,7 @@ import { audio } from '../engine/audio';
 import { Store, type ShelfItem } from '../store/Store';
 import { Showcase } from '../showcase/Showcase';
 import { makeQR, type QRMatrix } from '../qr/qr';
-import { copyCanvas, downloadBlob, downloadCanvas, plainQRCanvas, qrSvg, scanCanvas, slug } from '../qr/export';
+import { canvasToBlob, copyCanvas, disableViewerDownloads, downloadBlob, plainQRCanvas, qrSvg, scanCanvas, slug, viewerDownloads } from '../qr/export';
 import { PRODUCTS, productById } from '../products';
 import type { Flavor, ProductContext, ProductDef } from '../products/types';
 import type { PixelArt } from '../qr/pixelCodec';
@@ -144,6 +144,8 @@ export class App {
     window.addEventListener('pointerdown', () => audio.unlock(), { passive: true });
     window.addEventListener('keydown', (e) => this.onKey(e));
     this.resize();
+    // ask an embedding artifact viewer for its downloads capability early, so saves are ready later
+    void viewerDownloads();
     (window as unknown as { __app: App }).__app = this;
   }
 
@@ -500,15 +502,39 @@ export class App {
     }
     if (kind === 'svg') {
       const svg = qrSvg(this.qr);
-      if (FRAMED) openSaveImage('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg), `${name}.svg`, null);
-      else downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${name}.svg`);
+      const file = `${name}.svg`;
+      await this.saveFile(new Blob([svg], { type: 'image/svg+xml' }), file, () =>
+        openSaveImage('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg), file, null),
+      );
     } else {
       const canvas = kind === 'poster' ? this.product.poster(this.ctx('poster')) : plainQRCanvas(this.qr);
       const file = kind === 'poster' ? `${name}.png` : `${name}-plain.png`;
-      if (FRAMED) openSaveImage(canvas.toDataURL('image/png'), file, () => copyCanvas(canvas));
-      else await downloadCanvas(canvas, file);
+      await this.saveFile(await canvasToBlob(canvas), file, () => openSaveImage(canvas.toDataURL('image/png'), file, () => copyCanvas(canvas)));
     }
-    if (!FRAMED) toast('Saved! Check your downloads', 'good');
+  }
+
+  /** Save through the artifact viewer when hosted there, else as a normal download; framed pages fall back to saving by hand. */
+  private async saveFile(blob: Blob, file: string, byHand: () => void) {
+    const viewer = await viewerDownloads();
+    if (viewer) {
+      try {
+        await viewer.save({ filename: file, data: blob });
+        toast(`Saved ${file}`, 'good');
+        return;
+      } catch (e) {
+        const code = (e as { code?: string }).code;
+        if (code === 'declined') return;
+        if (code === 'rate_limited') return toast('A save prompt is already open', 'info');
+        if (code === 'rejected_extension' || code === 'extension_not_enabled') return toast('This file type cannot be saved here', 'bad');
+        if (code === 'too_large' || code === 'bad_request' || code === 'transform_error') return toast('Could not save this file', 'bad');
+        disableViewerDownloads();
+      }
+    }
+    if (FRAMED) byHand();
+    else {
+      downloadBlob(blob, file);
+      toast('Saved! Check your downloads', 'good');
+    }
   }
 
   // -----------------------------------------------------------------------------------------------

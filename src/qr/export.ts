@@ -81,6 +81,30 @@ export async function downloadCanvas(canvas: HTMLCanvasElement, filename: string
   downloadBlob(await canvasToBlob(canvas), filename);
 }
 
+interface ViewerDownloads {
+  save(req: { filename: string; data: Blob | string }): Promise<{ status: 'saved' | 'delivered' }>;
+}
+let viewerDl: Promise<ViewerDownloads | null> | undefined;
+
+/**
+ * The claude.ai artifact viewer's `downloads` capability when the page is hosted there, else null.
+ * That viewer blocks downloads a page starts itself; `save()` asks the viewer to confirm instead.
+ */
+export function viewerDownloads(): Promise<ViewerDownloads | null> {
+  if (!viewerDl) {
+    const host = (window as unknown as { claude?: { use?: (name: string) => Promise<unknown> } }).claude;
+    viewerDl = typeof host?.use === 'function'
+      ? Promise.resolve(host.use('downloads')).then((d) => (d as ViewerDownloads | null) ?? null, () => null)
+      : Promise.resolve(null);
+  }
+  return viewerDl;
+}
+
+/** Stop offering viewer saves after the viewer reports them unavailable. */
+export function disableViewerDownloads() {
+  viewerDl = Promise.resolve(null);
+}
+
 export async function copyCanvas(canvas: HTMLCanvasElement): Promise<boolean> {
   try {
     const blob = await canvasToBlob(canvas);
