@@ -823,6 +823,30 @@ button {
   image-rendering: pixelated;
   border: 3px solid var(--ink);
 }
+.save-image {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.save-image-img {
+  display: block;
+  max-width: 100%;
+  max-height: min(56vh, 520px);
+  margin: 0 auto;
+  image-rendering: pixelated;
+  border: 3px solid var(--ink);
+  background: #fff;
+}
+.save-image .note {
+  margin: 0;
+}
+.save-image-name {
+  margin: 0;
+  font-family: var(--f-receipt);
+  font-size: 20px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
 .receipt-foot {
   margin-top: 16px;
   text-align: center;

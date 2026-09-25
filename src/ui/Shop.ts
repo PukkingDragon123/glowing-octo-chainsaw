@@ -229,6 +229,27 @@ export function openHelp() {
   openModal('How QR Market works', body);
 }
 
+/** Embedded previews block downloads the page starts, so hand over the image to save by hand. */
+export function openSaveImage(src: string, filename: string, copy: (() => Promise<boolean>) | null) {
+  const body = h(
+    'div',
+    { class: 'save-image' },
+    h('img', { class: 'save-image-img', src, alt: filename }),
+    h('p', { class: 'note' }, 'Downloads are blocked in this preview. Right-click the image and choose Save Image As, or long-press it on a phone.'),
+    h('p', { class: 'save-image-name' }, filename),
+    copy
+      ? h('button', {
+          class: 'btn btn-paper',
+          onclick: async () => {
+            const ok = await copy();
+            toast(ok ? 'Image copied' : 'Copying was blocked here. Save the image instead.', ok ? 'good' : 'bad');
+          },
+        }, '⧉ Copy image')
+      : null,
+  );
+  openModal('Save your code', body);
+}
+
 export function openReceipts(state: GameState, onOpen: (productId: string, flavorId: string, text: string) => void) {
   const list = h('div', { class: 'receipts-list' });
   if (!state.data.receipts.length) list.append(h('p', { class: 'note' }, 'No receipts yet. Open a product to make your first code.'));

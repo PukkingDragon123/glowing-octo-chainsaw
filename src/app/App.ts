@@ -13,11 +13,20 @@ import { buildPayload, defaultContent, DEFAULT_LINK, postcardBase, type ContentS
 import { Hud } from '../ui/Hud';
 import { Panel } from '../ui/Panel';
 import { anyModalOpen, closeTopModal, toast } from '../ui/overlay';
-import { confirmUnlock, openCatalog, openHelp, openReceipts, openShop, showAd } from '../ui/Shop';
+import { confirmUnlock, openCatalog, openHelp, openReceipts, openSaveImage, openShop, showAd } from '../ui/Shop';
 import { h, coinIcon } from '../ui/dom';
 import { isProbablyUrl } from '../qr/payload';
 
 type Mode = 'title' | 'walking' | 'store' | 'showcase';
+
+/** Embedded in another page (a sandboxed preview), where downloads started by the page are blocked. */
+const FRAMED = (() => {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+})();
 
 export class App {
   readonly pixel: PixelRenderer;
@@ -484,15 +493,22 @@ export class App {
       return;
     }
     if (!this.owned) return;
-    if (kind === 'poster') await downloadCanvas(this.product.poster(this.ctx('poster')), `${name}.png`);
-    else if (kind === 'plain') await downloadCanvas(plainQRCanvas(this.qr), `${name}-plain.png`);
-    else if (kind === 'svg') downloadBlob(new Blob([qrSvg(this.qr)], { type: 'image/svg+xml' }), `${name}.svg`);
-    else {
+    if (kind === 'copy') {
       const ok = await copyCanvas(this.product.poster(this.ctx('poster')));
       toast(ok ? 'Poster copied to clipboard' : 'Copy blocked here. Long-press the poster preview to save it.', ok ? 'good' : 'bad');
       return;
     }
-    toast('Saved! Check your downloads', 'good');
+    if (kind === 'svg') {
+      const svg = qrSvg(this.qr);
+      if (FRAMED) openSaveImage('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg), `${name}.svg`, null);
+      else downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${name}.svg`);
+    } else {
+      const canvas = kind === 'poster' ? this.product.poster(this.ctx('poster')) : plainQRCanvas(this.qr);
+      const file = kind === 'poster' ? `${name}.png` : `${name}-plain.png`;
+      if (FRAMED) openSaveImage(canvas.toDataURL('image/png'), file, () => copyCanvas(canvas));
+      else await downloadCanvas(canvas, file);
+    }
+    if (!FRAMED) toast('Saved! Check your downloads', 'good');
   }
 
   // -----------------------------------------------------------------------------------------------
