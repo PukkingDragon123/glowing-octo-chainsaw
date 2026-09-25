@@ -32,13 +32,21 @@ const list = only.length ? ids.filter((i) => only.includes(i)) : ids;
 const results = [];
 for (const id of list) {
   const flavors = await page.evaluate((pid) => window.__app.products.find((p) => p.id === pid).flavors.map((f) => f.id), id);
-  for (const [k, text] of [['short', 'https://qr.market/'], ['long', LONG]]) {
-    const flavor = flavors[k === 'short' ? 0 : flavors.length - 1];
+  const pref = await page.evaluate((pid) => window.__app.products.find((p) => p.id === pid).preferredMode ?? '', id);
+  const runs = [['short', 'https://qr.market/'], ['long', LONG]];
+  // photo/video-first products also get a real pixel postcard / flipbook (a much denser code)
+  if (pref === 'image') runs.push(['art', '@art1']);
+  if (pref === 'video') runs.push(['art', '@art6']);
+  for (const [k, text] of runs) {
+    const flavor = flavors[k === 'short' ? 0 : k === 'art' ? 1 % flavors.length : flavors.length - 1];
     const r = await page.evaluate(
       async ({ pid, fid, text }) => {
         const a = window.__app;
         await a.quickOpen(pid, fid);
-        a.setQR(text, 'test');
+        // let any content refresh triggered by opening (e.g. photo-first products) settle first
+        await new Promise((res) => setTimeout(res, 400));
+        if (text.startsWith('@art')) await a.useDemoArt(Number(text.slice(4)));
+        else a.setQR(text, 'test');
         a.reveal();
         await a.advance(15);
         a.toggleFocus(true);

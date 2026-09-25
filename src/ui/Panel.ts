@@ -1,6 +1,6 @@
 import { h, clear, coinIcon, formatBucks } from './dom';
 import type { Flavor, ProductDef } from '../products/types';
-import type { ContentMode, ContentState } from '../app/content';
+import { DEFAULT_LINK, type ContentMode, type ContentState } from '../app/content';
 import { detectLinkKind, LINK_KIND_LABEL, normalizeUrl } from '../qr/payload';
 import { densityLabel, type ECLevel, type QRMatrix } from '../qr/qr';
 import { imageToPixelArt, loadImage, openVideo, pixelArtCanvas, videoToPixelArt, type VideoCapture } from '../qr/pixelCapture';
@@ -96,7 +96,8 @@ export class Panel {
     this.status = 'idle';
     this.el.hidden = false;
     this.el.classList.remove('collapsed');
-    if (product.preferredMode && content.mode === 'link' && !content.image && !content.video) content.mode = product.preferredMode;
+    // photo/video-first products open on that tab, unless the shopper already typed their own link
+    if (product.preferredMode && content.mode === 'link' && content.link === DEFAULT_LINK && !content.image && !content.video) content.mode = product.preferredMode;
     this.render(flavor, bucks);
   }
 
