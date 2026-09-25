@@ -62,6 +62,8 @@ Dev helpers: `/?debug=art&p=<product-id>` shows every flavor's poster with a liv
 
 Pixel Postcard links point at the site that made them. The workflow sets `VITE_PUBLIC_URL` to your Pages URL; set it yourself when hosting elsewhere so postcards open on your domain.
 
+`npm run build:single` bundles everything into one HTML file (`dist-single/index.html`) for embedded previews. Its postcard links come from `.env.single`. When the page runs inside another page, where page-started downloads are blocked, the export buttons use the host's save prompt if it offers one, or show the image to save by hand.
+
 ## QRBucks, payments and ads
 
 Everything lives in `src/app/config.ts`:
