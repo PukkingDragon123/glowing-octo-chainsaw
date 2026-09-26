@@ -1,42 +1,33 @@
 import { CONFIG } from './config';
 
-export interface Receipt {
-  product: string;
-  flavor: string;
-  label: string;
-  at: number;
-  /** The encoded text (omitted when very long). */
-  text?: string;
-}
-
 export interface SaveData {
-  bucks: number;
-  unlocked: string[];
-  adsDay: string;
-  adsWatched: number;
-  dailyClaimed: string;
+  /** Packs bought for good ('*' = everything, used by tests). */
+  owned: string[];
+  /** Member Pass expiry (ms since epoch); 0 = not a member. */
+  memberUntil: number;
+  /** Packs unlocked for one day by watching an ad: product id → day. */
+  adPass: Record<string, string>;
   sound: boolean;
   music: boolean;
   made: number;
-  receipts: Receipt[];
   visits: number;
-  petDay: string;
+  /** One-time hints already shown. */
+  hints: string[];
 }
 
-const KEY = 'qr-market-save-v1';
+const KEY = 'xolotl-kobini-v1';
 
-function today() {
-  const d = new Date();
+export function today(d = new Date()) {
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 }
 
 function fresh(): SaveData {
-  return { bucks: CONFIG.startingBucks, unlocked: [], adsDay: today(), adsWatched: 0, dailyClaimed: '', sound: true, music: false, made: 0, receipts: [], visits: 0, petDay: '' };
+  return { owned: [], memberUntil: 0, adPass: {}, sound: true, music: false, made: 0, visits: 0, hints: [] };
 }
 
 type Listener = (s: SaveData) => void;
 
-/** Wallet, unlocks and settings, kept in localStorage (wrapped so private windows still work). */
+/** Unlocks, membership and settings, kept in localStorage (wrapped so private windows still work). */
 export class GameState {
   data: SaveData;
   private listeners: Listener[] = [];
@@ -48,10 +39,6 @@ export class GameState {
       if (raw) this.data = { ...fresh(), ...JSON.parse(raw) };
     } catch {
       /* storage unavailable: play with defaults */
-    }
-    if (this.data.adsDay !== today()) {
-      this.data.adsDay = today();
-      this.data.adsWatched = 0;
     }
     this.data.visits++;
     this.save();
@@ -71,71 +58,47 @@ export class GameState {
     for (const l of this.listeners) l(this.data);
   }
 
-  get bucks() {
-    return this.data.bucks;
+  get isMember() {
+    return this.data.memberUntil > Date.now();
   }
 
-  owns(productId: string, price: number) {
-    return price === 0 || this.data.unlocked.includes(productId) || this.data.unlocked.includes('*');
+  owns(p: { id: string; price: number }) {
+    if (p.price <= 0) return true;
+    const d = this.data;
+    return d.owned.includes(p.id) || d.owned.includes('*') || this.isMember || d.adPass[p.id] === today();
   }
 
-  addBucks(n: number) {
-    this.data.bucks += n;
-    this.save();
-  }
-
-  spend(n: number): boolean {
-    if (this.data.bucks < n) return false;
-    this.data.bucks -= n;
-    this.save();
-    return true;
-  }
-
+  /** Permanently unlock a pack (after a purchase). */
   unlock(productId: string) {
-    if (!this.data.unlocked.includes(productId)) this.data.unlocked.push(productId);
+    if (!this.data.owned.includes(productId)) this.data.owned.push(productId);
     this.save();
   }
 
-  get dailyAvailable() {
-    return this.data.dailyClaimed !== today();
-  }
-
-  claimDaily(): boolean {
-    if (!this.dailyAvailable) return false;
-    this.data.dailyClaimed = today();
-    this.data.bucks += CONFIG.dailyBonus;
+  /** Start (or extend) the monthly Member Pass. */
+  startMembership(days = CONFIG.member.days, now = Date.now()) {
+    this.data.memberUntil = Math.max(now, this.data.memberUntil) + days * 86400000;
     this.save();
-    return true;
   }
 
-  get adsLeft() {
-    if (this.data.adsDay !== today()) return CONFIG.adsPerDay;
-    return Math.max(0, CONFIG.adsPerDay - this.data.adsWatched);
+  /** Unlock a pack for the rest of today (rewarded ad). */
+  adUnlock(productId: string) {
+    this.data.adPass[productId] = today();
+    this.save();
   }
 
-  rewardAd() {
-    if (this.data.adsDay !== today()) {
-      this.data.adsDay = today();
-      this.data.adsWatched = 0;
+  seen(hint: string) {
+    return this.data.hints.includes(hint);
+  }
+
+  markSeen(hint: string) {
+    if (!this.seen(hint)) {
+      this.data.hints.push(hint);
+      this.save();
     }
-    this.data.adsWatched++;
-    this.data.bucks += CONFIG.adReward;
-    this.save();
   }
 
-  /** Petting the store cat gives a small tip once a day. */
-  pet(): boolean {
-    if (this.data.petDay === today()) return false;
-    this.data.petDay = today();
-    this.data.bucks += 5;
-    this.save();
-    return true;
-  }
-
-  addReceipt(r: Receipt) {
+  addMade() {
     this.data.made++;
-    this.data.receipts.unshift(r);
-    this.data.receipts = this.data.receipts.slice(0, 30);
     this.save();
   }
 

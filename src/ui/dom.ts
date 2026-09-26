@@ -31,20 +31,3 @@ export function clear(el: HTMLElement) {
   while (el.firstChild) el.removeChild(el.firstChild);
   return el;
 }
-
-/** QRBucks coin as inline pixel SVG. */
-export function coinIcon(size = 16) {
-  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  s.setAttribute('viewBox', '0 0 10 10');
-  s.setAttribute('width', String(size));
-  s.setAttribute('height', String(size));
-  s.setAttribute('shape-rendering', 'crispEdges');
-  s.classList.add('coin');
-  s.innerHTML =
-    '<path d="M3 0h4v1h2v2h1v4H9v2H7v1H3V9H1V7H0V3h1V1h2z" fill="#1d1b26"/><path d="M3 1h4v1h1v1h1v4H8v1H7v1H3V8H2V7H1V3h1V2h1z" fill="#ffd23f"/><path d="M4 3h2v1h1v2H6v1H4V6H3V4h1z" fill="#f2a900"/><path d="M3 2h2v1H3z" fill="#fff7c2"/>';
-  return s;
-}
-
-export function formatBucks(n: number) {
-  return n.toLocaleString('en-US');
-}

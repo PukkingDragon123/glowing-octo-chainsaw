@@ -1,52 +1,60 @@
 import { h } from './dom';
 import { audio } from '../engine/audio';
+import { iconImg, type IconName } from '../art/icons';
 
 let toastBox: HTMLElement | null = null;
 
-export function toast(message: string, kind: 'info' | 'good' | 'bad' = 'info', icon?: Node) {
+/** A short pixel toast (use sparingly — the game talks with animations, not words). */
+export function toast(message: string, kind: 'info' | 'good' | 'bad' = 'info', icon?: IconName) {
   if (!toastBox) {
     toastBox = h('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' });
     document.body.appendChild(toastBox);
   }
-  const t = h('div', { class: `toast ${kind}` }, icon ?? null, message);
+  const t = h('div', { class: `toast ${kind}` }, icon ? iconImg(icon, 2) : null, message);
   toastBox.appendChild(t);
   setTimeout(() => t.remove(), 2600);
 }
 
-export interface ModalHandle {
+export interface PanelHandle {
   close(): void;
   el: HTMLElement;
+  body: HTMLElement;
 }
 
-let openModals: ModalHandle[] = [];
+let open: PanelHandle[] = [];
 
-export function openModal(title: string, body: Node, opts: { onClose?: () => void; wide?: boolean } = {}): ModalHandle {
+/** Parchment RPG panel with a ribbon title and an X button. */
+export function openPanel(title: string, body: Node, opts: { ribbon?: 'green' | 'pink'; onClose?: () => void; stamp?: string } = {}): PanelHandle {
   const close = () => {
     backdrop.remove();
-    openModals = openModals.filter((m) => m !== handle);
+    open = open.filter((m) => m !== handle);
     opts.onClose?.();
   };
-  const modal = h(
+  const xBtn = h('button', { class: 'x', 'aria-label': 'Close', onclick: () => (audio.play('back'), close()) }, iconImg('close', 2));
+  const wrap = h('div', { class: 'rpg-body' }, body);
+  const panel = h(
     'div',
-    { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': title, style: opts.wide ? { width: 'min(640px, 100%)' } : undefined },
-    h('div', { class: 'modal-head' }, h('h2', null, title), h('button', { class: 'modal-close', 'aria-label': 'Close', onclick: () => (audio.play('back'), close()) }, 'X')),
-    body,
+    { class: 'rpg', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+    h('div', { class: `ribbon ${opts.ribbon ?? 'green'}` }, title),
+    xBtn,
+    wrap,
+    opts.stamp ? h('div', { class: 'stamp' }, opts.stamp) : null,
   );
-  const backdrop = h('div', { class: 'backdrop', onclick: (e: Event) => e.target === backdrop && close() }, modal);
+  const backdrop = h('div', { class: 'backdrop', onclick: (e: Event) => e.target === backdrop && close() }, panel);
   document.body.appendChild(backdrop);
-  const handle = { close, el: modal };
-  openModals.push(handle);
-  setTimeout(() => (modal.querySelector('button.btn, .modal-close') as HTMLElement | null)?.focus(), 30);
+  const handle = { close, el: panel, body: wrap };
+  open.push(handle);
+  setTimeout(() => (panel.querySelector('button.pill') as HTMLElement | null)?.focus(), 40);
   return handle;
 }
 
 export function closeTopModal(): boolean {
-  const m = openModals[openModals.length - 1];
+  const m = open[open.length - 1];
   if (!m) return false;
   m.close();
   return true;
 }
 
 export function anyModalOpen() {
-  return openModals.length > 0;
+  return open.length > 0;
 }

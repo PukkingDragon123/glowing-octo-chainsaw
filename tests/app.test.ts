@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildPayload, defaultContent, DEFAULT_LINK } from '../src/app/content';
 import { GameState } from '../src/app/state';
-import { CONFIG } from '../src/app/config';
+import { CONFIG, priceOf } from '../src/app/config';
 import { demoPixelArt } from '../src/qr/demoArt';
 import { decodePixelArt, extractPixelHash } from '../src/qr/pixelCodec';
 
@@ -26,52 +26,55 @@ beforeEach(() => {
   (globalThis as unknown as { localStorage: MemoryStorage }).localStorage = new MemoryStorage();
 });
 
-describe('QRBucks wallet', () => {
-  it('starts with the welcome balance and persists changes', () => {
-    const s = new GameState();
-    expect(s.bucks).toBe(CONFIG.startingBucks);
-    s.addBucks(50);
-    const again = new GameState();
-    expect(again.bucks).toBe(CONFIG.startingBucks + 50);
-  });
+describe('unlocks and the member pass', () => {
+  const volt = { id: 'volt', price: 150 };
+  const gacha = { id: 'gacha', price: 120 };
 
-  it('only spends what you have', () => {
+  it('free packs are always open, paid ones need unlocking', () => {
     const s = new GameState();
-    expect(s.spend(s.bucks + 1)).toBe(false);
-    expect(s.spend(20)).toBe(true);
-    expect(s.bucks).toBe(CONFIG.startingBucks - 20);
-  });
-
-  it('gives the daily bonus once per day', () => {
-    const s = new GameState();
-    expect(s.claimDaily()).toBe(true);
-    expect(s.claimDaily()).toBe(false);
-    expect(s.bucks).toBe(CONFIG.startingBucks + CONFIG.dailyBonus);
-  });
-
-  it('caps rewarded ads per day', () => {
-    const s = new GameState();
-    for (let i = 0; i < CONFIG.adsPerDay; i++) s.rewardAd();
-    expect(s.adsLeft).toBe(0);
-    expect(s.bucks).toBe(CONFIG.startingBucks + CONFIG.adsPerDay * CONFIG.adReward);
-  });
-
-  it('tracks unlocks, including the Market Pass', () => {
-    const s = new GameState();
-    expect(s.owns('volt', 150)).toBe(false);
-    expect(s.owns('captain-qr', 0)).toBe(true);
+    expect(s.owns({ id: 'captain-qr', price: 0 })).toBe(true);
+    expect(s.owns(volt)).toBe(false);
     s.unlock('volt');
-    expect(s.owns('volt', 150)).toBe(true);
-    expect(s.owns('gacha', 120)).toBe(false);
-    s.unlock('*');
-    expect(s.owns('gacha', 120)).toBe(true);
+    expect(s.owns(volt)).toBe(true);
+    expect(s.owns(gacha)).toBe(false);
+    // persisted
+    expect(new GameState().owns(volt)).toBe(true);
   });
 
-  it('pets the cat for a tip once a day', () => {
+  it('the member pass opens everything until it runs out', () => {
     const s = new GameState();
-    expect(s.pet()).toBe(true);
-    expect(s.pet()).toBe(false);
-    expect(s.bucks).toBe(CONFIG.startingBucks + 5);
+    const now = Date.now();
+    s.startMembership(CONFIG.member.days, now);
+    expect(s.isMember).toBe(true);
+    expect(s.owns(gacha)).toBe(true);
+    // extending adds to the remaining time
+    const until = s.data.memberUntil;
+    s.startMembership(30, now);
+    expect(s.data.memberUntil).toBe(until + 30 * 86400000);
+    s.data.memberUntil = now - 1;
+    expect(s.isMember).toBe(false);
+    expect(s.owns(gacha)).toBe(false);
+  });
+
+  it('a rewarded ad opens one pack for today only', () => {
+    const s = new GameState();
+    s.adUnlock('gacha');
+    expect(s.owns(gacha)).toBe(true);
+    expect(s.owns(volt)).toBe(false);
+    s.data.adPass.gacha = '2000-1-1';
+    expect(s.owns(gacha)).toBe(false);
+  });
+
+  it('remembers which hints were shown', () => {
+    const s = new GameState();
+    expect(s.seen('qr')).toBe(false);
+    s.markSeen('qr');
+    expect(new GameState().seen('qr')).toBe(true);
+  });
+
+  it('prices every locked pack', () => {
+    expect(priceOf({ id: 'captain-qr', price: 0 })).toBe('');
+    expect(priceOf({ id: 'volt', price: 150 })).toMatch(/^\$\d+\.\d\d$/);
   });
 });
 

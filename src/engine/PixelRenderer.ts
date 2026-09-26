@@ -30,6 +30,11 @@ uniform float blockSize;
 uniform vec3 transitionColor;
 uniform float mosaic;
 uniform float seed;
+uniform float iris;
+uniform vec2 irisCenter;
+uniform float irisRadius;
+uniform float irisShape;
+uniform sampler2D tIris;
 varying vec2 vUv;
 
 float linDepth(float d) {
@@ -125,6 +130,17 @@ void main() {
     if (h * 0.6 + sweep * 0.4 < t) col = transitionColor;
   }
 
+  if (iris > 0.5) {
+    // circle / logo-shaped iris wipe centred on a point (radius in screen heights)
+    vec2 d = (vUv - irisCenter) * vec2(resolution.x / resolution.y, 1.0);
+    bool inside;
+    if (irisShape > 0.5) {
+      vec2 q = d / max(irisRadius, 1e-4) * 0.5 + 0.5;
+      inside = q.x > 0.0 && q.y > 0.0 && q.x < 1.0 && q.y < 1.0 && texture2D(tIris, q).a > 0.5;
+    } else inside = length(d) < irisRadius;
+    if (!inside) col = transitionColor;
+  }
+
   gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }`;
 
@@ -170,6 +186,8 @@ export class PixelRenderer {
   readonly look: PixelLook = { ...DEFAULT_LOOK };
   transition = 0;
   mosaic = 1;
+  /** Iris wipe: radius in screen heights (≥ ~1.2 = fully open), centre in 0..1 screen UV. */
+  iris = { on: false, radius: 2, center: new THREE.Vector2(0.5, 0.5), mask: null as THREE.Texture | null };
   transitionColor = new THREE.Color('#141b2d');
   private tmpColor = new THREE.Color();
 
@@ -223,6 +241,11 @@ export class PixelRenderer {
         transitionColor: { value: new THREE.Color() },
         mosaic: { value: 1 },
         seed: { value: 0 },
+        iris: { value: 0 },
+        irisCenter: { value: new THREE.Vector2(0.5, 0.5) },
+        irisRadius: { value: 2 },
+        irisShape: { value: 0 },
+        tIris: { value: null },
       },
     });
     this.quad = new FullScreenQuad(this.material);
@@ -301,6 +324,11 @@ export class PixelRenderer {
     u.transition.value = this.transition;
     u.transitionColor.value.copy(this.transitionColor);
     u.mosaic.value = this.mosaic;
+    u.iris.value = this.iris.on ? 1 : 0;
+    u.irisCenter.value.copy(this.iris.center);
+    u.irisRadius.value = this.iris.radius;
+    u.irisShape.value = this.iris.mask ? 1 : 0;
+    u.tIris.value = this.iris.mask;
 
     r.setRenderTarget(null);
     this.quad.render(r);

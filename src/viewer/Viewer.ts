@@ -1,4 +1,6 @@
 import { h } from '../ui/dom';
+import { logoDataURL } from '../art/brand';
+import { iconImg } from '../art/icons';
 import { decodePixelArt, extractPixelHash, type PixelArt } from '../qr/pixelCodec';
 
 function drawFrame(canvas: HTMLCanvasElement, art: PixelArt, frame: number) {
@@ -25,13 +27,14 @@ export async function showViewer(root: HTMLElement, onEnter: () => void): Promis
   const canvas = h('canvas', { width: 1, height: 1, 'aria-label': 'Pixel picture from the QR code' });
   const caption = h('div', { class: 'caption' });
   const meta = h('div', { class: 'viewer-meta' });
-  const enter = h('button', { class: 'btn btn-big', onclick: () => {
+  const enter = h('button', { class: 'pill pink', onclick: () => {
     window.clearInterval(timer);
     history.replaceState(null, '', location.pathname + location.search);
     wrap.remove();
     onEnter();
-  } }, '▶ Make your own at QR Market');
-  const card = h('div', { class: 'polaroid' }, canvas, caption, meta, enter);
+  } }, h('span', { class: 'lead' }, iconImg('play', 2), 'MAKE YOUR OWN'), h('img', { src: logoDataURL(32), alt: '', width: 28, height: 28, style: 'image-rendering:pixelated' }));
+  const brand = h('div', { class: 'viewer-brand' }, h('img', { src: logoDataURL(32), alt: '' }), 'XOLOTL KOBINI');
+  const card = h('div', { class: 'polaroid' }, brand, canvas, caption, meta, enter);
   const wrap = h('div', { class: 'viewer' }, card);
   root.appendChild(wrap);
   let timer = 0;

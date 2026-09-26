@@ -1,201 +1,264 @@
 import * as THREE from 'three';
-import { Batcher, paintGeometry, toonMat } from '../engine/batch';
-import { Painter, shade } from '../engine/Painter';
-import { FONT_BIG, FONT_TINY } from '../engine/pixelFont';
+import { toonGradient } from '../engine/voxel';
+import { Painter } from '../engine/Painter';
+import { FONT_BIG } from '../engine/pixelFont';
 import { LAYER_NO_OUTLINE } from '../engine/PixelRenderer';
-import { VoxelGrid, voxelMesh, toonGradient } from '../engine/voxel';
-import { rng } from '../engine/tween';
-import { STORE } from './fixtures';
+import { Bitmap, ellipse, hex, pixelTexture } from '../art/pixel';
+import { spriteMesh } from '../art/spriteMesh';
+import { drawLogo, BRAND } from '../art/brand';
+import { buddyPortrait } from '../art/buddy';
+import { CAST } from '../art/cast';
+import { Kit, PAL } from './kit';
+import { STORE } from './layout';
 
-const INK = '#1d1b26';
-
-function logoSignTexture() {
-  const probe = new Painter(4, 4);
-  const tw = probe.textWidth('QR MARKET', { font: FONT_BIG, scale: 2, bold: true });
-  const p = new Painter(tw + 36, 22);
-  p.clear('#141b2d');
-  // QR-ish icon
-  p.rect(5, 3, 16, 16, '#ffd23f');
-  p.rect(7, 5, 5, 5, INK).rect(14, 5, 5, 5, INK).rect(7, 12, 5, 5, INK).rect(14, 13, 3, 3, INK);
-  p.text('QR MARKET', 27, 4, { font: FONT_BIG, scale: 2, bold: true, color: '#ffffff', shadow: '#ff5d73', shadowOffset: [1, 1] });
-  return { tex: p.texture(), aspect: p.w / p.h };
-}
-
-function neonOpenTexture() {
-  const p = new Painter(40, 14);
-  p.clear('#1d1b26');
-  p.text('OPEN 24H', 20, 3, { font: FONT_BIG, color: '#ff5d8f', align: 'center' });
-  return p.texture();
-}
-
-function scooter() {
-  const g = new VoxelGrid(22, 14, 8);
-  const body = '#2ec4b6';
-  g.cylinder(4, 4, 0, 1, 3, INK);
-  g.box(2, 0, 3, 6, 6, 4, INK);
-  g.box(15, 0, 3, 19, 6, 4, INK);
-  g.box(3, 2, 3, 5, 4, 4, '#adb5bd');
-  g.box(16, 2, 3, 18, 4, 4, '#adb5bd');
-  g.box(5, 5, 2, 17, 7, 5, body);
-  g.box(14, 7, 2, 18, 9, 5, body);
-  g.box(8, 8, 2, 13, 9, 5, '#3d405b');
-  g.box(18, 9, 3, 18, 13, 4, '#adb5bd');
-  g.box(16, 13, 1, 20, 13, 6, INK);
-  g.box(19, 10, 3, 20, 11, 4, '#ffd23f');
-  return voxelMesh(g, { scale: 0.06 });
-}
-
-function lampPost() {
-  const g = new VoxelGrid(8, 64, 4);
-  g.box(3, 0, 1, 4, 60, 2, '#3d405b');
-  g.box(0, 58, 0, 7, 59, 3, '#3d405b');
-  g.box(0, 55, 1, 2, 57, 2, '#ffe8a3');
-  return voxelMesh(g, { scale: 0.06 });
-}
+/** The storefront seen from the street: awning, sign, glass doors, posters, sky. */
 
 export interface Facade {
   group: THREE.Group;
   doors: THREE.Object3D[];
-  neon: THREE.Mesh;
-  lamp: THREE.PointLight;
+  bulbs: THREE.Mesh[];
+  clouds: THREE.Object3D[];
+  sign: THREE.Object3D;
 }
 
-/** Storefront, sidewalk and street for the walk-in intro (behind the camera once inside). */
+function toon(color: string, map?: THREE.Texture) {
+  return new THREE.MeshToonMaterial({ color, map: map ?? null, gradientMap: toonGradient() });
+}
+
+/** Pink and white striped awning strip with a scalloped hem. */
+function awningCanvas(w: number) {
+  const H = 28;
+  const b = new Bitmap(w, H);
+  const pink = hex(BRAND.pink);
+  const white = hex('#ffffff');
+  const pinkD = hex(BRAND.pinkDark);
+  const stripe = 10;
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < w; x++) {
+      const band = Math.floor(x / stripe) % 2 === 0;
+      const r = stripe / 2;
+      const local = (x % stripe) - r + 0.5;
+      const hem = y - 18;
+      if (hem > 0 && local * local + (hem - 0) * (hem - 0) * 1.2 > r * r) continue;
+      b.set(x, y, band ? pink : white);
+      if (y === 18 && band) b.set(x, y, pinkD);
+    }
+  b.outline('#2a1c22');
+  return b.toCanvas();
+}
+
+/** The big sign: logo mark + XOLOTL KOBINI in chunky pixel letters, with marquee bulbs. */
+function signCanvas() {
+  const p = new Painter(220, 40);
+  p.roundRect(0, 0, 220, 40, 8, '#2a1c22');
+  p.roundRect(2, 2, 216, 36, 7, '#ffffff');
+  p.roundRect(4, 4, 212, 32, 6, '#fff6ef');
+  const logo = drawLogo(28, { badge: true }).toCanvas();
+  const w1 = p.textWidth('XOLOTL', { font: FONT_BIG, scale: 2, spacing: 1 });
+  const w2 = p.textWidth('KOBINI', { font: FONT_BIG, scale: 2, spacing: 1 });
+  const total = 28 + 8 + w1 + 10 + w2;
+  const x0 = Math.round((220 - total) / 2);
+  p.ctx.drawImage(logo, x0, 6);
+  p.text('XOLOTL', x0 + 36, 13, { font: FONT_BIG, scale: 2, color: BRAND.pink, shadow: BRAND.pinkDark, shadowOffset: [1, 1], spacing: 1 });
+  p.text('KOBINI', x0 + 36 + w1 + 10, 13, { font: FONT_BIG, scale: 2, color: '#5fb3a1', shadow: '#3f8a7a', shadowOffset: [1, 1], spacing: 1 });
+  return p.canvas;
+}
+
+function cloudSprite() {
+  const w = 64;
+  const h = 26;
+  const b = new Bitmap(w, h);
+  const m = ellipse(w, h, 20, 16, 13, 8).union(ellipse(w, h, 34, 12, 14, 10)).union(ellipse(w, h, 47, 16, 12, 7)).union(ellipse(w, h, 32, 19, 26, 6));
+  b.paint(m, '#fff4f4');
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (m.get(x, y) && !m.get(x, y + 2)) b.set(x, y, hex('#f6c8d6'));
+  return b.toCanvas();
+}
+
+function skyTexture() {
+  const p = new Painter(4, 64);
+  const stops = ['#6d7fd6', '#8f89dc', '#c49be0', '#f2a6c8', '#ffc1b0', '#ffd9a8', '#ffe9c2'];
+  for (let i = 0; i < 64; i++) p.rect(0, i, 4, 1, stops[Math.min(stops.length - 1, Math.floor((i / 64) * stops.length))]);
+  return p.texture();
+}
+
 export function buildFacade(): Facade {
-  const group = new THREE.Group();
+  const g = new THREE.Group();
   const z = STORE.frontZ;
-  const x0 = STORE.xMin;
-  const x1 = STORE.xMax;
-  const W = x1 - x0;
+  const x0 = -9;
+  const x1 = 7;
+  const w = x1 - x0;
   const cx = (x0 + x1) / 2;
-  const b = new Batcher();
-  const wall = '#f7f4ec';
-  const H = STORE.ceilingY;
-  // fascia band with stripes
-  b.box(W, 0.9, 0.3, '#2ec4b6', cx, H, z);
-  b.box(W, 0.14, 0.32, '#ffd23f', cx, H - 0.14, z);
-  b.box(W, 0.12, 0.32, '#ff5d73', cx, H - 0.26, z);
-  // wall pieces between windows / door
-  const pillars = [x0, -4.2, -1.1, 1.1, 4.2, 8.5, 13, 18, 24, 30, 36, x1];
-  for (const px of pillars) b.box(0.4, H, 0.3, wall, px, 0, z);
-  // kick panel under windows
-  b.box(W, 0.45, 0.28, '#3d405b', cx, 0, z);
-  b.box(W, 0.08, 0.3, wall, cx, 0.45, z);
-  // transom above windows/door
-  b.box(W, 0.25, 0.28, wall, cx, H - 0.5, z);
-  // door frame
-  b.box(2.2, 0.12, 0.34, '#2b2d42', 0, 2.35, z);
-  b.box(0.12, 2.4, 0.34, '#2b2d42', -1.1, 0, z);
-  b.box(0.12, 2.4, 0.34, '#2b2d42', 1.1, 0, z);
-  // sidewalk + curb + street
-  b.box(W, 0.08, 3.2, '#c9c6bd', cx, -0.08, z + 1.7);
-  b.box(W, 0.14, 0.2, '#e9e5dc', cx, -0.14, z + 3.3);
-  b.box(W, 0.02, 14, '#2b2d42', cx, -0.16, z + 10.4);
-  group.add(b.build());
-  // sidewalk tile lines
-  const tiles = new Painter(16, 16);
-  tiles.clear('#c9c6bd');
-  tiles.rect(0, 0, 16, 1, '#b3afa4').rect(0, 0, 1, 16, '#b3afa4');
-  const tt = tiles.texture(true);
-  tt.repeat.set(W / 0.8, 3.2 / 0.8);
-  const walk = new THREE.Mesh(new THREE.PlaneGeometry(W, 3.2), new THREE.MeshToonMaterial({ map: tt, gradientMap: toonGradient() }));
-  walk.rotation.x = -Math.PI / 2;
-  walk.position.set(cx, 0.001, z + 1.7);
-  walk.receiveShadow = true;
-  group.add(walk);
-  // road dashes
-  const dash = new Batcher();
-  for (let x = x0; x < x1; x += 1.6) dash.box(0.8, 0.01, 0.1, '#ffd23f', x, -0.14, z + 7.5);
-  group.add(dash.build({ castShadow: false }));
+  const H = 3.6;
+  const k = new Kit();
 
-  // window glass (see-through into the lit store)
-  const glassMat = new THREE.MeshBasicMaterial({ color: '#9fd8ff', transparent: true, opacity: 0.14, depthWrite: false });
-  for (let i = 0; i < pillars.length - 1; i++) {
-    const a = pillars[i] + 0.2;
-    const c = pillars[i + 1] - 0.2;
-    if (a > -1.2 && c < 1.2) continue;
-    const g = new THREE.Mesh(new THREE.PlaneGeometry(c - a, H - 1.2), glassMat);
-    g.position.set((a + c) / 2, 0.53 + (H - 1.2) / 2, z + 0.05);
-    g.layers.set(LAYER_NO_OUTLINE);
-    group.add(g);
+  // sky + distant city
+  const sky = new THREE.Mesh(new THREE.PlaneGeometry(90, 30), new THREE.MeshBasicMaterial({ map: skyTexture() }));
+  sky.position.set(cx, 8, -12);
+  sky.layers.set(LAYER_NO_OUTLINE);
+  g.add(sky);
+  const sun = new THREE.Mesh(new THREE.CircleGeometry(1.4, 24), new THREE.MeshBasicMaterial({ color: '#fff0c2' }));
+  sun.position.set(cx + 9, 6.2, -11.8);
+  sun.layers.set(LAYER_NO_OUTLINE);
+  g.add(sun);
+  const clouds: THREE.Object3D[] = [];
+  for (let i = 0; i < 6; i++) {
+    const c = spriteMesh(cloudSprite(), { ppu: 18 + (i % 3) * 4, anchor: [0.5, 0.5], doubleSided: true });
+    c.position.set(cx - 22 + i * 8.5, 7 + (i % 3) * 1.4, -11.5);
+    c.layers.set(LAYER_NO_OUTLINE);
+    c.userData.speed = 0.15 + (i % 3) * 0.08;
+    clouds.push(c);
+    g.add(c);
   }
-  // sliding doors
+  // neighbouring pastel buildings
+  const hood = [
+    [x0 - 4.2, 5.2, '#bfe3d4', 3.8],
+    [x1 + 3.8, 4.6, '#ffd8b5', 3.4],
+    [x0 - 8.6, 6.4, '#d7c9f2', 3.2],
+    [x1 + 8, 5.8, '#ffc7d6', 3.8],
+  ] as const;
+  for (const [bx, bh, col, bw] of hood) {
+    k.rbox(bw, bh, 3, 0.18, col, bx, 0, z - 1.8);
+    for (let wy = 1.2; wy < bh - 0.6; wy += 1.1) for (const wx of [-bw / 4, bw / 4]) k.rbox(0.62, 0.72, 0.06, 0.06, '#fff2c9', bx + wx, wy, z - 0.28);
+  }
+
+  // store front wall around windows and door
+  k.rbox(w, 0.35, 0.3, 0.08, PAL.white, cx, 0, z);
+  k.rbox(w, 0.5, 0.36, 0.1, PAL.white, cx, H - 0.5, z);
+  for (const px of [x0 + 0.15, STORE.doorX - 1.05, STORE.doorX + 1.05, x1 - 0.15]) k.rbox(0.3, H, 0.34, 0.1, PAL.white, px, 0, z);
+  k.rbox(w + 0.4, 0.2, 0.5, 0.08, PAL.pinkLight, cx, H, z);
+  // window sills with flower boxes
+  for (const [a, b] of [
+    [x0 + 0.3, STORE.doorX - 1.2],
+    [STORE.doorX + 1.2, x1 - 0.3],
+  ]) {
+    k.rbox(b - a, 0.2, 0.36, 0.06, PAL.mintDark, (a + b) / 2, 0.35, z + 0.25);
+    for (let fx = a + 0.2; fx < b - 0.1; fx += 0.3) k.sphere(0.1, ['#ff8fb1', '#ffd66b', '#ffffff'][Math.round(fx * 7) % 3], fx, 0.62, z + 0.3, 0.8);
+  }
+  // sidewalk + street
+  k.rbox(w + 16, 0.1, 5, 0.03, '#e9e2d7', cx, -0.1, z + 2.5);
+  k.rbox(w + 16, 0.12, 0.3, 0.05, '#cfc6b8', cx, -0.08, z + 5);
+  const street = new THREE.Mesh(new THREE.PlaneGeometry(60, 12), new THREE.MeshBasicMaterial({ color: '#6c6a86' }));
+  street.rotation.x = -Math.PI / 2;
+  street.position.set(cx, -0.08, z + 11);
+  g.add(street);
+  for (let sx = cx - 26; sx < cx + 26; sx += 3) k.rbox(1.4, 0.02, 0.18, 0.02, '#f6efe0', sx, -0.07, z + 9);
+  // bench + lamp posts
+  k.rbox(1.6, 0.08, 0.45, 0.04, PAL.woodDark, x1 - 1.6, 0.42, z + 1.6);
+  k.rbox(1.6, 0.35, 0.08, 0.04, PAL.woodDark, x1 - 1.6, 0.52, z + 1.4);
+  for (const lx of [x1 - 2.3, x1 - 0.9]) k.rbox(0.08, 0.42, 0.4, 0.03, '#5b6475', lx, 0, z + 1.6);
+  for (const lx of [x0 - 0.8, x1 + 0.9]) {
+    k.cyl(0.06, 0.08, 3.4, '#5b6475', lx, 0, z + 3.2, 10);
+    k.sphere(0.24, '#fff3c4', lx, 3.55, z + 3.2, 1, new THREE.MeshBasicMaterial({ color: '#fff3c4' }));
+  }
+  g.add(k.build());
+
+  // glass: windows and the sliding doors
+  const glassMat = new THREE.MeshBasicMaterial({ color: '#dff3ff', transparent: true, opacity: 0.18, depthWrite: false });
+  const winL = new THREE.Mesh(new THREE.PlaneGeometry(STORE.doorX - 1.2 - x0 - 0.3, 2.6), glassMat);
+  winL.position.set((x0 + 0.3 + STORE.doorX - 1.2) / 2, 0.35 + 1.4, z + 0.05);
+  const winR = new THREE.Mesh(new THREE.PlaneGeometry(x1 - 0.3 - (STORE.doorX + 1.2), 2.6), glassMat);
+  winR.position.set((STORE.doorX + 1.2 + x1 - 0.3) / 2, 0.35 + 1.4, z + 0.05);
+  for (const m of [winL, winR]) {
+    m.layers.set(LAYER_NO_OUTLINE);
+    m.renderOrder = 2;
+    g.add(m);
+  }
+  // mascot posters in the windows
+  const posters: [string, number, number][] = [
+    ['captain', x0 + 1.6, 1.6],
+    ['drops', STORE.doorX - 2.4, 1.7],
+    ['fizzy', STORE.doorX + 2.4, 1.6],
+    ['oni', x1 - 1.6, 1.7],
+  ];
+  for (const [id, px, py] of posters) {
+    const spec = CAST[id];
+    if (!spec) continue;
+    const art = buddyPortrait(spec, { armR: 2.5, mouth: 'open' });
+    const p = new Painter(art.w + 12, art.h + 16);
+    p.roundRect(0, 0, p.w, p.h, 4, '#2a1c22');
+    p.roundRect(1, 1, p.w - 2, p.h - 2, 3, id === 'captain' ? '#ffe7a3' : id === 'drops' ? '#ffd6e6' : id === 'fizzy' ? '#d6f0ff' : '#dff6e8');
+    p.ctx.drawImage(art.toCanvas(), 6, 8);
+    const poster = spriteMesh(p.canvas, { ppu: 64, anchor: [0.5, 0.5], doubleSided: true });
+    poster.position.set(px, py, z + 0.02);
+    g.add(poster);
+  }
+  // doors (two sliding glass panels with pink frames and the logo)
   const doors: THREE.Object3D[] = [];
-  const dm = new THREE.MeshBasicMaterial({ color: '#bfe9ff', transparent: true, opacity: 0.2, depthWrite: false });
-  for (const s of [-1, 1]) {
-    const d = new THREE.Group();
-    const pane = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 2.3), dm);
-    pane.position.y = 1.15;
+  for (const side of [-1, 1]) {
+    const door = new THREE.Group();
+    const dk = new Kit();
+    dk.rbox(1.0, 0.1, 0.06, 0.03, BRAND.pink, 0, 0, 0);
+    dk.rbox(1.0, 0.1, 0.06, 0.03, BRAND.pink, 0, 2.5, 0);
+    dk.rbox(0.08, 2.6, 0.06, 0.03, BRAND.pink, -0.46, 0, 0);
+    dk.rbox(0.08, 2.6, 0.06, 0.03, BRAND.pink, 0.46, 0, 0);
+    door.add(dk.build());
+    const pane = new THREE.Mesh(new THREE.PlaneGeometry(0.86, 2.42), glassMat);
+    pane.position.y = 1.3;
     pane.layers.set(LAYER_NO_OUTLINE);
-    const frame = new Batcher();
-    frame.box(1.04, 0.06, 0.05, '#2b2d42', 0, 0, 0);
-    frame.box(1.04, 0.06, 0.05, '#2b2d42', 0, 2.26, 0);
-    frame.box(0.05, 2.3, 0.05, '#2b2d42', s * -0.5, 0, 0);
-    frame.box(0.04, 0.4, 0.05, '#adb5bd', s * -0.4, 0.9, 0.04);
-    d.add(pane, frame.build());
-    d.position.set(s * 0.52, 0, z + 0.08);
-    d.userData.closedX = s * 0.52;
-    d.userData.openX = s * 1.55;
-    group.add(d);
-    doors.push(d);
-    // door sticker
-    const st = new Painter(18, 18);
-    st.disc(9, 9, 8, '#ffd23f');
-    st.text('PUSH', 9, 3, { font: FONT_TINY, color: INK, align: 'center' });
-    st.text('NO', 9, 10, { font: FONT_TINY, color: INK, align: 'center' });
-    const sticker = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), new THREE.MeshBasicMaterial({ map: st.texture(), transparent: true, alphaTest: 0.5 }));
-    sticker.position.set(0, 1.4, 0.01);
-    sticker.visible = false;
-    d.add(sticker);
+    pane.renderOrder = 2;
+    door.add(pane);
+    if (side === -1) {
+      const decal = spriteMesh(drawLogo(32, { badge: true, round: true }).toCanvas(), { ppu: 32 / 0.5, anchor: [0.5, 0.5], doubleSided: true });
+      decal.position.set(0.3, 1.45, 0.035);
+      door.add(decal);
+    }
+    const closedX = STORE.doorX + side * 0.5;
+    door.position.set(closedX, 0.35, z + 0.02);
+    door.userData.closedX = closedX;
+    door.userData.openX = closedX + side * 0.95;
+    doors.push(door);
+    g.add(door);
   }
-
-  // big logo sign
-  const sign = logoSignTexture();
-  const logo = new THREE.Mesh(new THREE.PlaneGeometry(0.8 * sign.aspect, 0.8), new THREE.MeshBasicMaterial({ map: sign.tex, toneMapped: false }));
-  logo.position.set(0, H + 0.45, z + 0.17);
-  group.add(logo);
-  // neon OPEN sign in a window
-  const neon = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.38), new THREE.MeshBasicMaterial({ map: neonOpenTexture(), toneMapped: false }));
-  neon.position.set(-2.6, 2.1, z + 0.07);
-  group.add(neon);
-  // posters in windows
-  const poster = new Painter(24, 32);
-  poster.clear('#6f4ef2');
-  poster.text('NEW', 12, 3, { font: FONT_TINY, color: '#ffd23f', align: 'center' });
-  poster.rect(5, 10, 14, 14, '#ffffff');
-  poster.rect(7, 12, 4, 4, INK).rect(13, 12, 4, 4, INK).rect(7, 18, 4, 4, INK).rect(14, 19, 2, 2, INK);
-  poster.text('SCAN', 12, 26, { font: FONT_TINY, color: '#ffffff', align: 'center' });
-  const pm = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.8), new THREE.MeshBasicMaterial({ map: poster.texture() }));
-  pm.position.set(2.7, 1.4, z + 0.07);
-  group.add(pm);
-
-  const sc = scooter();
-  sc.position.set(-3.2, 0, z + 2.3);
-  sc.rotation.y = 0.35;
-  group.add(sc);
-  const lp = lampPost();
-  lp.position.set(4.6, 0, z + 2.9);
-  group.add(lp);
-  const lamp = new THREE.PointLight('#ffd89c', 6, 7, 1.6);
-  lamp.position.set(4.6, 3.3, z + 2.9);
-  group.add(lamp);
-
-  // stars
-  const r = rng(99);
-  const starPos: number[] = [];
-  for (let i = 0; i < 260; i++) starPos.push(-40 + r() * 90, 4 + r() * 30, -30 - r() * 20);
-  const stars = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3)), new THREE.PointsMaterial({ color: '#ffffff', size: 2, sizeAttenuation: false }));
-  stars.layers.set(LAYER_NO_OUTLINE);
-  group.add(stars);
-  // moon
-  const moon = new THREE.Mesh(new THREE.CircleGeometry(1.6, 16), new THREE.MeshBasicMaterial({ color: '#fff4c7' }));
-  moon.position.set(14, 16, -28);
-  moon.layers.set(LAYER_NO_OUTLINE);
-  group.add(moon);
-  // roof silhouette so the sky reads above the store
-  const roof = paintGeometry(new THREE.BoxGeometry(W, 0.6, 12), shade('#141b2d', 0.1));
-  const rm = new THREE.Mesh(roof, toonMat());
-  rm.position.set(cx, H + 1.2, z - 5);
-  group.add(rm);
-  return { group, doors, neon, lamp };
+  // awning
+  const aw = awningCanvas(Math.round(w * 22));
+  const awMesh = spriteMesh(aw, { ppu: 22, anchor: [0.5, 1], doubleSided: true });
+  awMesh.position.set(cx, H - 0.35, z + 0.45);
+  awMesh.rotation.x = -0.55;
+  g.add(awMesh);
+  // sign with marquee bulbs
+  const signTex = pixelTexture(signCanvas());
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 7.2 * 40 / 220), new THREE.MeshBasicMaterial({ map: signTex }));
+  sign.position.set(STORE.doorX, H + 1.0, z + 0.28);
+  g.add(sign);
+  const sk = new Kit();
+  sk.rbox(7.5, 1.7, 0.3, 0.2, PAL.pink, STORE.doorX, H + 0.15, z + 0.1);
+  g.add(sk.build());
+  const bulbs: THREE.Mesh[] = [];
+  const bulbGeo = new THREE.SphereGeometry(0.055, 8, 6);
+  for (let i = 0; i < 26; i++) {
+    const t = i / 26;
+    const per = 2 * (7.5 + 1.7);
+    let d = t * per;
+    let bx: number;
+    let by: number;
+    if (d < 7.5) {
+      bx = -3.75 + d;
+      by = 1.7;
+    } else if ((d -= 7.5) < 1.7) {
+      bx = 3.75;
+      by = 1.7 - d;
+    } else if ((d -= 1.7) < 7.5) {
+      bx = 3.75 - d;
+      by = 0;
+    } else {
+      d -= 7.5;
+      bx = -3.75;
+      by = d;
+    }
+    const bulb = new THREE.Mesh(bulbGeo, new THREE.MeshBasicMaterial({ color: '#fff3a8' }));
+    bulb.position.set(STORE.doorX + bx, H + 0.15 + by, z + 0.27);
+    bulb.layers.set(LAYER_NO_OUTLINE);
+    bulbs.push(bulb);
+    g.add(bulb);
+  }
+  g.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh && !m.layers.isEnabled(1)) {
+      m.castShadow = true;
+      m.receiveShadow = true;
+    }
+  });
+  return { group: g, doors, bulbs, clouds, sign };
 }
+
+export { toon };

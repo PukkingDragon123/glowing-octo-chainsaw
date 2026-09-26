@@ -4,6 +4,7 @@ import '@fontsource/silkscreen/latin-400.css';
 import '@fontsource/vt323/latin-400.css';
 import './ui/styles.css';
 import { showViewer } from './viewer/Viewer';
+import { logoDataURL } from './art/brand';
 
 const root = document.getElementById('app')!;
 const params = new URLSearchParams(location.search);
@@ -20,10 +21,23 @@ function webglAvailable() {
 async function bootStore() {
   const loading = document.createElement('div');
   loading.className = 'loading';
-  loading.textContent = 'STOCKING THE SHELVES…';
+  const inner = document.createElement('div');
+  inner.className = 'inner';
+  const logo = document.createElement('img');
+  logo.src = logoDataURL(48);
+  logo.alt = 'Xolotl Kobini';
+  const dots = document.createElement('div');
+  dots.className = 'dots';
+  dots.append(document.createElement('i'), document.createElement('i'), document.createElement('i'));
+  inner.append(logo, dots);
+  loading.append(inner);
   document.body.appendChild(loading);
   if (!webglAvailable()) {
-    loading.textContent = 'QR MARKET NEEDS WEBGL. TRY A NEWER BROWSER.';
+    dots.remove();
+    const err = document.createElement('div');
+    err.className = 'err';
+    err.textContent = 'XOLOTL KOBINI NEEDS WEBGL. TRY A NEWER BROWSER.';
+    inner.append(err);
     return;
   }
   // let the loading screen paint before the heavy scene build

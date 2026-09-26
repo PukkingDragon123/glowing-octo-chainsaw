@@ -1,37 +1,45 @@
 /**
- * QR Market configuration.
+ * Xolotl Kobini configuration.
  *
- * Payments: the store runs in demo mode — "buying" a pack adds QRBucks for free. To charge real money,
- * create Stripe Payment Links and paste them below. Granting QRBucks after a real payment needs a
- * server (Stripe webhook) to verify the purchase; see README.md.
+ * Payments run in demo mode: "Buy" and "Member pass" unlock for free and say so on screen. To charge
+ * real money, create Stripe Payment Links (one per pack you sell and a subscription link for the
+ * Member Pass), paste them below and set `demoPayments` to false; the buttons then open Stripe
+ * Checkout. Unlocking after a real payment must be verified on a server (a Stripe webhook that
+ * records the purchase and returns a signed grant) — the browser-only save in src/app/state.ts is
+ * for demo play and can be edited by users. See README.md.
  *
- * Ads: the "watch an ad" reward plays a built-in house ad. Swap `showAd` in src/ui/Shop.ts for your
- * ad network's rewarded-video SDK.
+ * Ads: "Watch an ad" plays a built-in house ad, then unlocks that pack for the rest of the day.
+ * Replace `showAd` in src/ui/PayScreen.ts with your ad network's rewarded-video SDK.
  */
-export interface BucksPack {
-  id: string;
-  name: string;
-  bucks: number;
-  price: string;
-  bonus?: string;
-  /** Stripe Payment Link (https://buy.stripe.com/...). Empty = demo mode. */
-  paymentLink?: string;
-  unlockAll?: boolean;
-}
-
 export const CONFIG = {
-  startingBucks: 120,
-  dailyBonus: 30,
-  adReward: 25,
-  adsPerDay: 10,
-  adSeconds: 12,
   demoPayments: true,
-  packs: [
-    { id: 'snack', name: 'Snack Pack', bucks: 250, price: '$0.99' },
-    { id: 'party', name: 'Party Pack', bucks: 1200, price: '$3.99', bonus: '+20% bonus' },
-    { id: 'whale', name: 'Whale Pack', bucks: 4000, price: '$9.99', bonus: 'Best value' },
-    { id: 'pass', name: 'Market Pass', bucks: 0, price: '$14.99', bonus: 'Unlock every product', unlockAll: true },
-  ] as BucksPack[],
+  /** Pack prices by product id. Products not listed here are free. */
+  prices: {
+    'lucky-scratch': '$0.99',
+    'latte-art': '$0.99',
+    'fizz-pop': '$1.49',
+    'frosty-cubes': '$1.49',
+    'boba-bliss': '$1.49',
+    gacha: '$1.99',
+    volt: '$1.99',
+    'golden-ticket': '$2.99',
+  } as Record<string, string>,
+  /** Stripe Payment Links by product id (https://buy.stripe.com/...). */
+  paymentLinks: {} as Record<string, string>,
+  member: {
+    price: '$2.99',
+    period: 'MONTH',
+    days: 30,
+    /** Stripe subscription Payment Link for the Member Pass. */
+    paymentLink: '',
+  },
+  adSeconds: 8,
   /** Base URL used inside Pixel Postcard codes. Set VITE_PUBLIC_URL at build time for your domain. */
   publicUrl: (import.meta.env.VITE_PUBLIC_URL as string | undefined) ?? '',
 };
+
+/** Price label for a locked pack ('' when free). */
+export function priceOf(p: { id: string; price: number }): string {
+  if (p.price <= 0) return '';
+  return CONFIG.prices[p.id] ?? (p.price >= 200 ? '$2.99' : p.price >= 120 ? '$1.99' : p.price >= 80 ? '$1.49' : '$0.99');
+}
