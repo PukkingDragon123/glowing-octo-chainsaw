@@ -8,11 +8,31 @@ import { Bitmap, Mask, blob, capsule, ellipse, hex, mixRGB, poly, prng, ramp, re
 
 export const INK = '#2a1a1d';
 
-export type Form = 'round' | 'soft' | 'flat' | 'cylX' | 'cylY' | 'none';
+/**
+ * Height profiles: 'round' (dome from the distance to the edge), 'puff' (smooth inflated dome that
+ * is exactly spherical on circles and has no creases on irregular outlines), 'soft' / 'flat'
+ * (flat top with a rounded / chamfered bevel), 'cylX' / 'cylY' (tube along x / y), 'none'.
+ */
+export type Form = 'round' | 'soft' | 'flat' | 'cylX' | 'cylY' | 'none' | 'puff';
+
+export type ScatterKind = 'dot' | 'seed' | 'chip' | 'sprinkle' | 'plus' | 'crumb' | 'sesame' | 'pore' | 'dash' | 'fleck';
 
 export interface ShadeOpts {
   /** Height profile of the shape (default 'round'). */
   form?: Form;
+  /** Height multiplier (default 1): below 1 flattens the shading, above 1 steepens the edges. */
+  depth?: number;
+  /** Merge isolated single pixels into their neighbours' band for cleaner clusters. */
+  clean?: boolean;
+  /** Bounce light: lift the darkest band one step along the shadow-side edge (glossy look). */
+  reflect?: boolean;
+  /** Colour of the `rim` line (default: the ramp's darkest shade, mixed in). */
+  rimColor?: string;
+  /**
+   * Stripes, swirls and checks under one shading: each pixel takes its ramp from
+   * `ramps[at(x, y)]` (falling back to the layer's own ramp) while the light stays continuous.
+   */
+  pattern?: { ramps: RGB[][]; at: (x: number, y: number) => number };
   /** Bevel radius in px for 'soft' and 'flat' (default 3 / 2). */
   bevel?: number;
   /** Brightness offset: >0 lighter, <0 darker. */
@@ -38,9 +58,50 @@ const LIGHT: [number, number, number] = (() => {
 
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 
+/**
+ * Inflate a silhouette like a balloon: solve the membrane equation ∇²u = -4 inside the mask (u = 0
+ * outside) with over-relaxed Gauss-Seidel, then take √u. A disc of radius r becomes an exact
+ * hemisphere of radius r; long strips become tubes; any outline gets a smooth crease-free dome.
+ */
+function puffHeights(mask: Mask): Float32Array {
+  const { w, h } = mask;
+  const u = new Float32Array(w * h);
+  const inside: number[] = [];
+  for (let i = 0; i < mask.m.length; i++) if (mask.m[i]) inside.push(i);
+  if (!inside.length) return u;
+  const b = mask.bounds();
+  const n = Math.max(b.w, b.h, 2);
+  const omega = 2 / (1 + Math.sin(Math.PI / (n + 1)));
+  const iters = Math.ceil(12 * n + 40);
+  // start from the disc solution d·(2R − d) (d = distance to the edge): exact for circles and
+  // close for most outlines, so the relaxation only has to settle the details
+  const dist = mask.distance();
+  let R = 1;
+  for (const i of inside) R = Math.max(R, dist[i]);
+  for (const i of inside) u[i] = Math.max(0, dist[i] * (2 * R - dist[i]));
+  const tol = 2e-4 * R * R;
+  const at = (i: number, x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : u[i]);
+  for (let it = 0; it < iters; it++) {
+    let delta = 0;
+    for (const i of inside) {
+      const x = i % w;
+      const y = (i / w) | 0;
+      const nb = at(i - 1, x - 1, y) + at(i + 1, x + 1, y) + at(i - w, x, y - 1) + at(i + w, x, y + 1);
+      const gs = (nb + 4) / 4;
+      const d = omega * (gs - u[i]);
+      u[i] += d;
+      delta = Math.max(delta, Math.abs(d));
+    }
+    if (delta < tol) break;
+  }
+  for (const i of inside) u[i] = Math.sqrt(Math.max(0, u[i]));
+  return u;
+}
+
 /** Height field for a mask given a form. */
 function heights(mask: Mask, form: Form, bevel: number): Float32Array {
   const { w, h } = mask;
+  if (form === 'puff') return puffHeights(mask);
   const H = new Float32Array(w * h);
   if (form === 'none') return H;
   if (form === 'cylX' || form === 'cylY') {
@@ -92,6 +153,8 @@ export class Chef {
   private owner: Int16Array;
   private nLayers = 0;
   private rand: () => number;
+  /** Options merged under every `layer` call's own options (e.g. `{ dither: false }`). */
+  shadeDefaults: ShadeOpts = {};
 
   constructor(readonly w: number, readonly h: number, seed = 7) {
     this.bmp = new Bitmap(w, h);
@@ -121,6 +184,73 @@ export class Chef {
   blob(pts: [number, number][], samples = 8) {
     return blob(this.w, this.h, pts, samples);
   }
+  /** Ellipse rotated by `deg` degrees (clockwise on screen). */
+  oval(cx: number, cy: number, rx: number, ry: number, deg = 0) {
+    const t = (deg * Math.PI) / 180;
+    const co = Math.cos(t);
+    const si = Math.sin(t);
+    return new Mask(this.w, this.h).fill((x, y) => {
+      const dx = x - cx;
+      const dy = y - cy;
+      const u = dx * co + dy * si;
+      const v = -dx * si + dy * co;
+      return (u / rx) ** 2 + (v / ry) ** 2 <= 1;
+    });
+  }
+  /** Thick polyline through the points with round joins (radius r). */
+  path(pts: [number, number][], r: number) {
+    const m = new Mask(this.w, this.h);
+    if (pts.length === 1) return m.union(capsule(this.w, this.h, pts[0][0], pts[0][1], pts[0][0], pts[0][1], r));
+    for (let i = 0; i + 1 < pts.length; i++) m.union(capsule(this.w, this.h, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], r));
+    return m;
+  }
+  /** Smooth open stroke through the points (Catmull-Rom), radius r. */
+  curve(pts: [number, number][], r: number, samples = 6) {
+    return this.path(spline(pts, samples), r);
+  }
+  /** Elliptical ring of thickness t (measured inward from the outer ellipse). */
+  ring(cx: number, cy: number, rx: number, ry: number, t: number) {
+    return ellipse(this.w, this.h, cx, cy, rx, ry).subtract(ellipse(this.w, this.h, cx, cy, Math.max(0.01, rx - t), Math.max(0.01, ry - t)));
+  }
+  /** Elliptical wedge between two angles in degrees (0° = +x, 90° = down, i.e. clockwise on screen). */
+  wedge(cx: number, cy: number, rx: number, ry: number, a0: number, a1: number) {
+    const lo = a0 * (Math.PI / 180);
+    let span = (a1 - a0) * (Math.PI / 180);
+    while (span < 0) span += Math.PI * 2;
+    return new Mask(this.w, this.h).fill((x, y) => {
+      const dx = (x - cx) / rx;
+      const dy = (y - cy) / ry;
+      if (dx * dx + dy * dy > 1) return false;
+      let a = Math.atan2(dy, dx) - lo;
+      while (a < 0) a += Math.PI * 2;
+      return a <= span;
+    });
+  }
+  /**
+   * Clean a silhouette: drop pixels hanging on by at most one side and fill notches enclosed on
+   * three sides, so the ink outline doesn't sprout lumps and pits.
+   */
+  tidy(mask: Mask, passes = 2) {
+    let m = mask.clone();
+    for (let p = 0; p < passes; p++) {
+      const out = m.clone();
+      let changed = false;
+      for (let y = 0; y < this.h; y++)
+        for (let x = 0; x < this.w; x++) {
+          const nb = m.get(x - 1, y) + m.get(x + 1, y) + m.get(x, y - 1) + m.get(x, y + 1);
+          if (m.get(x, y) && nb <= 1) {
+            out.set(x, y, 0);
+            changed = true;
+          } else if (!m.get(x, y) && nb >= 3) {
+            out.set(x, y, 1);
+            changed = true;
+          }
+        }
+      m = out;
+      if (!changed) break;
+    }
+    return m;
+  }
   empty() {
     return new Mask(this.w, this.h);
   }
@@ -130,19 +260,23 @@ export class Chef {
   }
 
   /** Shade a shape with a ramp (dark → light, usually 5 colours) and paint it on top. */
-  layer(mask: Mask, colors: RGB[] | string, o: ShadeOpts = {}) {
+  layer(mask: Mask, colors: RGB[] | string, opts: ShadeOpts = {}) {
+    const o: ShadeOpts = { ...this.shadeDefaults, ...opts };
     const r = typeof colors === 'string' ? ramp(colors) : colors;
     const n = r.length;
     const form = o.form ?? 'round';
     const bevel = o.bevel ?? (form === 'flat' ? 2 : 3);
     const H = heights(mask, form, bevel);
+    if (o.depth !== undefined && o.depth !== 1) for (let i = 0; i < H.length; i++) H[i] *= o.depth;
     const { w, h } = this;
     const id = this.nLayers++;
     const rand = o.seed !== undefined ? prng(o.seed) : this.rand;
     const hAt = (x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h || !mask.m[y * w + x] ? 0 : H[y * w + x]);
     const flat = LIGHT[2];
-    const top = o.highlights === false ? n - 1 : n - 1;
+    const top = n - 1;
     const below = new Mask(w, h);
+    // band index per pixel (-1 outside the shape)
+    const band = new Int8Array(w * h).fill(-1);
     for (let y = 0; y < h; y++)
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
@@ -166,19 +300,73 @@ export class Chef {
         else if (s > -0.42) idx = mid - 1;
         else idx = mid - 2;
         if (o.highlights !== false && idx === top && s < 0.36) idx = Math.min(idx, n - 2);
-        if (o.grain && rand() < o.grain) idx += rand() < 0.6 ? -1 : 1;
-        idx = Math.max(0, Math.min(n - 1, idx));
-        this.bmp.set(x, y, r[idx]);
-        this.owner[i] = id;
+        band[i] = Math.max(0, Math.min(n - 1, idx));
       }
+    if (o.reflect) {
+      // light bouncing back from the surroundings: the darkest band stops one pixel short of the
+      // bottom-right edge, which reads as a glossy, rounded surface
+      const lift: number[] = [];
+      for (let i = 0; i < band.length; i++) {
+        if (band[i] !== 0) continue;
+        const x = i % w;
+        const y = (i / w) | 0;
+        if (!mask.get(x + 1, y) || !mask.get(x, y + 1) || !mask.get(x + 1, y + 1)) lift.push(i);
+      }
+      for (const i of lift) band[i] = Math.min(n - 1, 1);
+    }
+    if (o.clean) {
+      // a pixel that shares its band with none of its 8 neighbours joins the most common
+      // neighbouring band
+      const next = band.slice();
+      for (let i = 0; i < band.length; i++) {
+        if (band[i] < 0) continue;
+        const x = i % w;
+        const y = (i / w) | 0;
+        const votes = new Array(n).fill(0);
+        let same = 0;
+        let inside = 0;
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            const xx = x + dx;
+            const yy = y + dy;
+            if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+            const b = band[yy * w + xx];
+            if (b < 0) continue;
+            inside++;
+            if (b === band[i]) same++;
+            if (!dx || !dy) votes[b]++;
+          }
+        if (same || inside < 3) continue;
+        let best = band[i];
+        let bv = -1;
+        for (let k = 0; k < n; k++)
+          if (votes[k] > bv) {
+            bv = votes[k];
+            best = k;
+          }
+        next[i] = best;
+      }
+      band.set(next);
+    }
+    for (let i = 0; i < band.length; i++) {
+      if (band[i] < 0) continue;
+      let idx = band[i];
+      if (o.grain && rand() < o.grain) idx += rand() < 0.6 ? -1 : 1;
+      idx = Math.max(0, Math.min(n - 1, idx));
+      const rr = o.pattern ? (o.pattern.ramps[o.pattern.at(i % w, (i / w) | 0)] ?? r) : r;
+      this.bmp.set(i % w, (i / w) | 0, rr[Math.min(idx, rr.length - 1)]);
+      this.owner[i] = id;
+    }
     if (o.rim) {
       // boundary pixels that sit on a lower layer get one step darker for separation
       const e = mask.edge();
+      const rc = o.rimColor ? hex(o.rimColor) : null;
       for (let i = 0; i < e.m.length; i++) {
         if (!e.m[i] || !below.m[i]) continue;
         const x = i % w;
         const y = (i / w) | 0;
-        this.bmp.set(x, y, mixRGB(this.bmp.get(x, y), r[0], 0.55));
+        this.bmp.set(x, y, rc ?? mixRGB(this.bmp.get(x, y), r[0], 0.55));
       }
     }
     if (o.shadow !== false && id > 0) this.castShadow(mask, id);
@@ -210,17 +398,22 @@ export class Chef {
       }
   }
 
-  /** Scatter small marks (seeds, chips, sprinkles, crumbs) inside a mask. */
+  /**
+   * Scatter small marks inside a mask. Kinds: 'dot' (1px), 'seed' (2×2), 'chip' (shaded 2×2),
+   * 'sprinkle' (2px, random direction), 'plus', 'crumb' (lit 1–3px nub), 'sesame' (1×2 seed with a
+   * shaded tip), 'pore' (dimple: darkens the surface, lit lower lip), 'dash' (2px along a fixed
+   * direction, `dir` 0–3), 'fleck' (darkens/lightens the pixel below by mixing in the colour).
+   */
   scatter(
     mask: Mask,
-    o: { count: number; colors: string[]; kind?: 'dot' | 'seed' | 'chip' | 'sprinkle' | 'plus'; margin?: number; seed?: number },
+    o: { count: number; colors: (string | RGB)[]; kind?: ScatterKind; margin?: number; seed?: number; dir?: number; avoid?: Mask },
   ) {
     const rand = o.seed !== undefined ? prng(o.seed) : this.rand;
     const inner = o.margin ? erodeN(mask, o.margin) : mask;
     const spots: number[] = [];
-    for (let i = 0; i < inner.m.length; i++) if (inner.m[i]) spots.push(i);
+    for (let i = 0; i < inner.m.length; i++) if (inner.m[i] && !(o.avoid && o.avoid.m[i])) spots.push(i);
     if (!spots.length) return;
-    const cols = o.colors.map(hex);
+    const cols = o.colors.map((c) => (typeof c === 'string' ? hex(c) : c));
     const used = new Set<number>();
     for (let k = 0; k < o.count; k++) {
       let i = spots[(rand() * spots.length) | 0];
@@ -259,6 +452,30 @@ export class Chef {
         put(x + 1, y);
         put(x, y - 1);
         put(x, y + 1);
+      } else if (kind === 'crumb') {
+        // a lit nub with a shadow tucked under its bottom-right
+        put(x, y);
+        if (rand() < 0.5) put(x + 1, y, mixRGB(c, [40, 20, 20], 0.25));
+        if (mask.get(x + 1, y + 1) && this.bmp.alpha(x + 1, y + 1)) this.bmp.set(x + 1, y + 1, mixRGB(this.bmp.get(x + 1, y + 1), [40, 16, 24], 0.35));
+      } else if (kind === 'sesame') {
+        const dir = (rand() * 3) | 0;
+        put(x, y);
+        const tip = mixRGB(c, [120, 70, 30], 0.35);
+        if (dir === 0) put(x, y + 1, tip);
+        else if (dir === 1) put(x + 1, y, tip);
+        else put(x + 1, y + 1, tip);
+      } else if (kind === 'pore') {
+        if (this.bmp.alpha(x, y)) this.bmp.set(x, y, mixRGB(this.bmp.get(x, y), c, 0.55));
+        if (mask.get(x, y + 1) && this.bmp.alpha(x, y + 1)) this.bmp.set(x, y + 1, mixRGB(this.bmp.get(x, y + 1), [255, 250, 230], 0.22));
+      } else if (kind === 'dash') {
+        const dir = o.dir ?? 0;
+        put(x, y);
+        if (dir === 0) put(x + 1, y);
+        else if (dir === 1) put(x, y + 1);
+        else if (dir === 2) put(x + 1, y + 1);
+        else put(x + 1, y - 1);
+      } else if (kind === 'fleck') {
+        if (this.bmp.alpha(x, y)) this.bmp.set(x, y, mixRGB(this.bmp.get(x, y), c, 0.5));
       }
     }
   }
@@ -303,8 +520,8 @@ export class Chef {
   }
 
   /** Tint painted pixels inside a mask toward a colour (glazes, grill marks, bites). */
-  tint(mask: Mask, color: string, t: number) {
-    const c = hex(color);
+  tint(mask: Mask, color: string | RGB, t: number) {
+    const c = typeof color === 'string' ? hex(color) : color;
     for (let i = 0; i < mask.m.length; i++) {
       if (!mask.m[i]) continue;
       const x = i % this.w;
@@ -324,18 +541,79 @@ export class Chef {
     return this;
   }
 
+  /** Four-point twinkle: a bright centre with softer arms (glassy or sugary highlights). */
+  sparkle(x: number, y: number, color: string | RGB = '#ffffff', arms?: string | RGB) {
+    const c = typeof color === 'string' ? hex(color) : color;
+    const a = arms ? (typeof arms === 'string' ? hex(arms) : arms) : mixRGB(c, this.bmp.alpha(x, y) ? this.bmp.get(x, y) : c, 0.45);
+    for (const [dx, dy] of [
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+      [0, 1],
+    ])
+      if (this.bmp.alpha(x + dx, y + dy)) this.bmp.set(x + dx, y + dy, a);
+    this.bmp.set(x, y, c);
+    return this;
+  }
+
   /** A short bright glint: the little white specular that makes pixel food look glossy. */
-  shine(x: number, y: number, len = 2, color = '#ffffff') {
-    const c = hex(color);
+  shine(x: number, y: number, len = 2, color: string | RGB = '#ffffff') {
+    const c = typeof color === 'string' ? hex(color) : color;
     for (let k = 0; k < len; k++) this.bmp.set(x + k, y - k, c);
     return this;
   }
 
-  /** Finish: dark outline around the silhouette. Returns the canvas. */
-  done(o: { outline?: string | null; diagonal?: boolean } = {}): HTMLCanvasElement {
+  /**
+   * Shave single-pixel nubs off the silhouette: a pixel held by one side whose neighbour sits
+   * inside a solid body (the lone tip of an ellipse's extreme row, say). Once inked, such pixels
+   * sprout a 1px spike; the tips of thin lines (stems, straws) are left alone.
+   */
+  removeNubs() {
+    const { w, h } = this;
+    const op = this.bmp.opaque();
+    const nb = (x: number, y: number) => op.get(x - 1, y) + op.get(x + 1, y) + op.get(x, y - 1) + op.get(x, y + 1);
+    const drop: number[] = [];
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        if (!op.get(x, y) || nb(x, y) !== 1) continue;
+        const [ax, ay] = op.get(x - 1, y) ? [x - 1, y] : op.get(x + 1, y) ? [x + 1, y] : op.get(x, y - 1) ? [x, y - 1] : [x, y + 1];
+        if (nb(ax, ay) >= 3) drop.push(y * w + x);
+      }
+    for (const i of drop) {
+      this.bmp.clearPx(i % w, (i / w) | 0);
+      this.owner[i] = -1;
+    }
+    return this;
+  }
+
+  /** Finish: dark outline around the silhouette (`nubs` shaves 1px spikes first). Returns the canvas. */
+  done(o: { outline?: string | null; diagonal?: boolean; nubs?: boolean } = {}): HTMLCanvasElement {
+    if (o.nubs) this.removeNubs();
     if (o.outline !== null) this.bmp.outline(o.outline ?? INK, o.diagonal ?? false);
     return this.bmp.toCanvas();
   }
+}
+
+/** Catmull-Rom points through an open list of control points. */
+export function spline(pts: [number, number][], samples = 6): [number, number][] {
+  if (pts.length < 3) return pts.slice();
+  const out: [number, number][] = [];
+  const n = pts.length;
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(n - 1, i + 2)];
+    for (let s = 0; s < samples; s++) {
+      const t = s / samples;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const f = (a: number, b: number, c: number, d: number) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+      out.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  out.push(pts[n - 1]);
+  return out;
 }
 
 function erodeN(m: Mask, n: number) {
