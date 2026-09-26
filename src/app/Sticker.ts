@@ -34,7 +34,12 @@ export interface StickerCallbacks {
   onPickFile(mode: 'image' | 'video'): void;
   /** Enter pressed: done editing. */
   onSubmit(): void;
+  /** The pull tab was tapped: open the pack. */
+  onOpen(): void;
 }
+
+/** Width of the pink pull tab on the sticker's right edge (canvas px). */
+const TAB = 15;
 
 export class Sticker {
   readonly mesh: THREE.Mesh;
@@ -192,6 +197,10 @@ export class Sticker {
   tap(uv: THREE.Vector2): boolean {
     const x = uv.x * this.W;
     const y = (1 - uv.y) * this.H;
+    if (x > this.W - TAB - 4 && y > this.H * 0.22 && y < this.H * 0.82) {
+      this.cb.onOpen();
+      return true;
+    }
     const icons = this.iconSlots();
     for (const s of icons) {
       if (x >= s.x - 2 && x <= s.x + 14 && y >= 2 && y <= 19) {
@@ -232,8 +241,9 @@ export class Sticker {
 
   private iconSlots() {
     const n = MODES.length;
-    const gap = Math.min(18, (this.W - 12) / n);
-    const x0 = Math.round((this.W - gap * n) / 2 + (gap - 12) / 2);
+    const BW = this.W - TAB;
+    const gap = Math.min(18, (BW - 12) / n);
+    const x0 = Math.round((BW - gap * n) / 2 + (gap - 12) / 2);
     return MODES.map((m, i) => ({ ...m, x: Math.round(x0 + i * gap) }));
   }
 
@@ -263,6 +273,11 @@ export class Sticker {
       this.mesh.rotation.z = Math.sin(this.wobble * 30) * 0.06 * this.wobble;
     }
     const caretOn = this.focused && Math.floor(this.blink * 2) % 2 === 0;
+    const phase = Math.floor(this.blink * 6) % 6;
+    if (this.status === 'ok' && phase !== this.lastPhase) {
+      this.lastPhase = phase;
+      this.dirty = true;
+    }
     if (this.dirty || caretOn !== this.lastCaret) {
       this.draw(caretOn);
       this.lastCaret = caretOn;
@@ -293,6 +308,7 @@ export class Sticker {
     this.input.hidden = !visible || media;
   }
   private lastCaret = false;
+  private lastPhase = -1;
 
   /** Screen-space centre of the sticker (for hints). */
   screenCenter(camera: THREE.Camera, canvas: HTMLCanvasElement) {
@@ -306,23 +322,42 @@ export class Sticker {
   private draw(caret: boolean) {
     const p = this.painter;
     const { W, H } = this;
+    const BW = W - TAB;
     const c = this.content;
     p.clear();
+    // pull tab poking out on the right (wiggles when the code is ready)
+    const ready = this.status === 'ok';
+    const wig = ready ? [0, 1, 2, 1, 0, 0][Math.floor(this.blink * 6) % 6] : 0;
+    const ty = Math.round(H * 0.28);
+    const th = Math.round(H * 0.46);
+    p.roundRect(BW - 6, ty, TAB + 6 - 1 + wig - 2, th, 5, INK);
+    p.roundRect(BW - 5, ty + 2, TAB + 3 + wig - 2, th - 4, 4, ready ? PINK : '#e8c2cf');
+    const ax = BW + 1 + wig;
+    const ay = ty + Math.round(th / 2);
+    p.poly(
+      [
+        [ax, ay - 4],
+        [ax + 5, ay],
+        [ax, ay + 4],
+      ],
+      '#ffffff',
+    );
     // sticker body: white rounded card, ink border, pink dashed inner line, folded corner
-    p.roundRect(0, 0, W, H, 7, INK);
-    p.roundRect(2, 2, W - 4, H - 4, 6, '#ffffff');
-    for (let x = 8; x < W - 8; x += 4) {
+    p.roundRect(0, 0, BW, H, 7, INK);
+    p.roundRect(2, 2, BW - 4, H - 4, 6, '#ffffff');
+    for (let y = 8; y < H - 8; y += 4) p.rect(BW - 4, y, 1, 2, ready ? '#f7a8c0' : '#ecd6de');
+    for (let x = 8; x < BW - 8; x += 4) {
       p.rect(x, 20, 2, 1, '#ffd0de');
     }
     p.poly(
       [
-        [W - 13, H - 2],
-        [W - 2, H - 13],
-        [W - 2, H - 2],
+        [BW - 13, H - 2],
+        [BW - 2, H - 13],
+        [BW - 2, H - 2],
       ],
       '#fff0f4',
     );
-    p.line(W - 13, H - 3, W - 3, H - 13, '#e9b7c6');
+    p.line(BW - 13, H - 3, BW - 3, H - 13, '#e9b7c6');
     // mode icons
     for (const s of this.iconSlots()) {
       const active = c && c.mode === s.mode;
@@ -335,24 +370,23 @@ export class Sticker {
     if (!c) return;
     const x0 = 8;
     let y = 26;
-    const maxW = W - 16;
+    const maxW = BW - 16;
     const rowH = 10;
     if (c.mode === 'image' || c.mode === 'video') {
       const art = this.art;
       if (art) {
         const frame = pixelArtCanvas(art, 0, 1);
-        const scale = Math.max(1, Math.floor(Math.min((H - 30) / frame.height, (W - 20) / frame.width)));
+        const scale = Math.max(1, Math.floor(Math.min((H - 30) / frame.height, (BW - 20) / frame.width)));
         const fw = frame.width * scale;
         const fh = frame.height * scale;
-        p.rect(Math.round((W - fw) / 2) - 1, 24 - 1, fw + 2, fh + 2, INK);
+        p.rect(Math.round((BW - fw) / 2) - 1, 24 - 1, fw + 2, fh + 2, INK);
         p.ctx.imageSmoothingEnabled = false;
-        p.ctx.drawImage(frame, Math.round((W - fw) / 2), 24, fw, fh);
+        p.ctx.drawImage(frame, Math.round((BW - fw) / 2), 24, fw, fh);
       } else {
         const ic = iconBitmap(c.mode === 'image' ? 'photo' : 'video').toCanvas();
-        const pulse = Math.floor(this.blink * 2) % 2 === 0 ? 2 : 2;
         p.ctx.imageSmoothingEnabled = false;
-        p.ctx.drawImage(ic, Math.round(W / 2 - 12), 28, 24 * (pulse / 2), 24 * (pulse / 2));
-        p.text('+', Math.round(W / 2 + 12), 26, { font: FONT_BIG, color: PINK });
+        p.ctx.drawImage(ic, Math.round(BW / 2 - 12), 28, 24, 24);
+        p.text('+', Math.round(BW / 2 + 12), 26, { font: FONT_BIG, color: PINK });
       }
     } else {
       const raw = this.input.value;
@@ -361,9 +395,9 @@ export class Sticker {
         // paste hint: clipboard icon + blinking caret
         const ic = iconBitmap('paste').toCanvas();
         p.ctx.imageSmoothingEnabled = false;
-        p.ctx.drawImage(ic, Math.round(W / 2 - 12), 28, 24, 24);
-        if (caret) p.rect(Math.round(W / 2 + 16), 30, 2, 18, PINK);
-        for (let x = 12; x < W - 12; x += 3) p.px(x, 58, '#e0c9d2');
+        p.ctx.drawImage(ic, Math.round(BW / 2 - 12), 28, 24, 24);
+        if (caret) p.rect(Math.round(BW / 2 + 16), 30, 2, 18, PINK);
+        for (let x = 12; x < BW - 12; x += 3) p.px(x, 58, '#e0c9d2');
       } else {
         const icons: (IconName | null)[] = c.mode === 'wifi' ? ['wifi', 'lock'] : c.mode === 'contact' ? ['contact', null, null] : [];
         const src = raw.split('\n');
@@ -386,14 +420,14 @@ export class Sticker {
           lastEnd = { x: tx + w + 1, y };
           y += rowH;
         });
-        if (caret) p.rect(Math.min(W - 6, lastEnd.x), lastEnd.y - 1, 1, 9, PINK);
+        if (caret) p.rect(Math.min(BW - 6, lastEnd.x), lastEnd.y - 1, 1, 9, PINK);
       }
     }
     // status badge
-    if (this.status === 'ok' && c.mode !== 'image' && c.mode !== 'video') p.ctx.drawImage(iconBitmap('check').toCanvas(), W - 16, H - 16);
+    if (this.status === 'ok' && c.mode !== 'image' && c.mode !== 'video') p.ctx.drawImage(iconBitmap('check').toCanvas(), BW - 18, H - 16);
     if (this.status === 'error') {
-      p.roundRect(W - 16, H - 17, 11, 12, 3, '#e0394a');
-      p.text('!', W - 12, H - 15, { font: FONT_BIG, color: '#ffffff' });
+      p.roundRect(BW - 18, H - 17, 11, 12, 3, '#e0394a');
+      p.text('!', BW - 14, H - 15, { font: FONT_BIG, color: '#ffffff' });
     }
     this.texture.needsUpdate = true;
   }

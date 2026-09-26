@@ -85,6 +85,7 @@ export class App {
       onChange: () => this.contentChanged(),
       onPickFile: (m) => this.pickFile(m),
       onSubmit: () => this.hintNext(),
+      onOpen: () => void this.openPack(),
     });
     this.hints = new Hints(root);
 
@@ -330,8 +331,8 @@ export class App {
       qr = null;
     }
     this.status = !qr ? 'error' : payload.error ? 'empty' : 'ok';
-    if (payload.error && /paste|enter/i.test(payload.error)) this.status = 'empty';
-    if (qr && !payload.error && (qr.text !== this.qr.text || payload.art !== this.art)) {
+    if (this.content.mode === 'text' && !this.content.text.trim()) this.status = 'empty';
+    if (qr && this.status === 'ok' && (qr.text !== this.qr.text || payload.art !== this.art)) {
       this.qr = qr;
       this.label = payload.label;
       this.art = payload.art;
