@@ -1,7 +1,8 @@
 import { Painter, shade } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
 import { rng } from '../../engine/tween';
-import { VoxelGrid } from '../../engine/voxel';
+import { buddyPortrait, type BuddySpec, type Pose } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor } from '../types';
 
 export const INK = '#1d1b26';
@@ -23,85 +24,35 @@ export function sprinkleColors(f: Flavor) {
 
 /** Box art sizes in texture pixels (8 px per 0.1 world units). */
 export const BOX_PX = { w: 104, h: 56, d: 76 };
-/** Lid window rectangle inside the lid-top art. */
-export const WINDOW = { x: 22, y: 21, w: 60, h: 34 };
+/** Lid window rectangle inside the lid-top art (the link sticker is glued over it). */
+export const WINDOW = { x: 20, y: 22, w: 64, h: 36 };
 
 // -------------------------------------------------------------------------------------------------
 // Sprites
 
-/** Dough-R, the mascot: a frosted donut with a face, waving. ~40x42 px. */
-export function drawDonut(target: Painter, x: number, y: number, f: Flavor, pose: 'wave' | 'cheer' = 'wave', flip = false) {
-  const L = new Painter(42, 44);
-  const cx = 21;
-  const cy = 19;
-  const limb = '#6b3a22';
-  const frost = f.c.frost;
-  // feet
-  L.thickLine(16, 31, 15, 37, 0.8, limb);
-  L.thickLine(26, 31, 27, 37, 0.8, limb);
-  L.ellipse(14.5, 39, 3.6, 2.1, '#ff5d73');
-  L.ellipse(27.5, 39, 3.6, 2.1, '#ff5d73');
-  L.rect(11, 40, 7, 1, '#ffffff');
-  L.rect(24, 40, 7, 1, '#ffffff');
-  // arms
-  if (pose === 'cheer') {
-    L.thickLine(8, 17, 3, 8, 0.9, limb);
-    L.thickLine(34, 17, 39, 8, 0.9, limb);
-    L.disc(3, 7, 2.3, '#ffffff');
-    L.disc(39, 7, 2.3, '#ffffff');
-  } else {
-    L.thickLine(8, 19, 3, 11, 0.9, limb);
-    L.disc(3, 10, 2.3, '#ffffff');
-    L.thickLine(34, 22, 39, 27, 0.9, limb);
-    L.disc(39.5, 27.5, 2.3, '#ffffff');
+const cache = new Map<string, HTMLCanvasElement>();
+/** Dough-R, the frosted-donut buddy, as a flat portrait (cached). */
+function donutPortrait(pose: Pose, key: string, spec: BuddySpec = CAST.donut) {
+  let c = cache.get(key);
+  if (!c) {
+    c = buddyPortrait(spec, pose).toCanvas();
+    cache.set(key, c);
   }
-  // dough ring
-  L.disc(cx, cy + 0.5, 14, '#c98a4a');
-  L.disc(cx - 0.4, cy - 0.3, 13.2, '#eab676');
-  // frosting with drips
-  L.disc(cx, cy - 0.6, 11.4, frost);
-  const drips = [0.3, 1.1, 1.7, 2.5, 3.3, 4.2, 5.0, 5.8];
-  drips.forEach((a, i) => L.disc(cx + Math.cos(a) * 11.6, cy - 0.6 + Math.sin(a) * 11.6, i % 2 ? 1.9 : 1.4, frost));
-  L.ellipse(cx - 5, cy - 7, 3.2, 1.8, shade(frost, 0.14));
-  L.px(cx - 7, cy - 8, '#ffffff');
-  // sprinkles
-  const sp = sprinkleColors(f);
-  const rnd = rng(17);
-  for (let i = 0; i < 16; i++) {
-    const a = rnd() * Math.PI * 2;
-    const r = 6.5 + rnd() * 4;
-    const sx = cx + Math.cos(a) * r;
-    const sy = cy - 0.6 + Math.sin(a) * r;
-    if (sy > cy - 7 && sy < cy - 1 && Math.abs(sx - cx) > 3 && Math.abs(sx - cx) < 9) continue; // keep eyes clear
-    const c = sp[i % sp.length];
-    if (rnd() < 0.5) L.rect(sx, sy, 2, 1, c);
-    else L.rect(sx, sy, 1, 2, c);
-  }
-  // hole
-  L.ctx.globalCompositeOperation = 'destination-out';
-  L.disc(cx, cy, 3.8, '#000');
-  L.ctx.globalCompositeOperation = 'source-over';
-  L.ring(cx, cy, 4.9, shade(frost, -0.18), 1);
-  // face
-  L.ellipse(cx - 6.5, cy - 4, 2.5, 3.1, '#ffffff');
-  L.ellipse(cx + 6.5, cy - 4, 2.5, 3.1, '#ffffff');
-  L.disc(cx - 6, cy - 3.3, 1.7, INK);
-  L.disc(cx + 7, cy - 3.3, 1.7, INK);
-  L.px(cx - 7, cy - 5, '#ffffff').px(cx + 6, cy - 5, '#ffffff');
-  L.ellipse(cx - 9.5, cy + 2.5, 1.8, 1.1, '#ff4f8b');
-  L.ellipse(cx + 9.5, cy + 2.5, 1.8, 1.1, '#ff4f8b');
-  // big smile under the hole
-  L.rect(cx - 3, cy + 7, 7, 1, '#5a1a1a');
-  L.px(cx - 4, cy + 6, '#5a1a1a').px(cx + 4, cy + 6, '#5a1a1a');
-  L.rect(cx - 2, cy + 8, 5, 1, '#ff6b7a');
-  L.outline(INK);
-  target.ctx.save();
+  return c;
+}
+
+/** Smaller Dough-Rs for the box panels. */
+const DOUGH_FRONT: BuddySpec = { ...CAST.donut, body: { ...CAST.donut.body, w: 28, h: 24 }, eyes: { y: 0.42 }, mouth: { y: 0.64, w: 11 }, limbs: { ...CAST.donut.limbs!, arm: 9, leg: 6, thick: 5 } };
+const DOUGH_SMALL: BuddySpec = { ...CAST.donut, body: { ...CAST.donut.body, w: 30, h: 26 }, eyes: { y: 0.44 }, mouth: { y: 0.64, w: 12 }, limbs: { ...CAST.donut.limbs!, arm: 10, leg: 7, thick: 5 } };
+
+function stamp(p: Painter, c: HTMLCanvasElement, x: number, y: number, flip = false) {
+  p.ctx.save();
   if (flip) {
-    target.ctx.translate(Math.round(x) + L.w, Math.round(y));
-    target.ctx.scale(-1, 1);
-    target.ctx.drawImage(L.canvas, 0, 0);
-  } else target.ctx.drawImage(L.canvas, Math.round(x), Math.round(y));
-  target.ctx.restore();
+    p.ctx.translate(Math.round(x) + c.width, Math.round(y));
+    p.ctx.scale(-1, 1);
+    p.ctx.drawImage(c, 0, 0);
+  } else p.ctx.drawImage(c, Math.round(x), Math.round(y));
+  p.ctx.restore();
 }
 
 /** Small chocolate donut hole with sprinkles (for illustrations). */
@@ -119,11 +70,6 @@ export function holeSprite(p: Painter, cx: number, cy: number, r: number, f: Fla
   }
   L.outline(INK);
   p.blit(L, cx - c, cy - c);
-}
-
-function sparkle(p: Painter, x: number, y: number, color = '#ffffff') {
-  p.px(x, y - 2, color).px(x, y - 1, color).px(x, y + 1, color).px(x, y + 2, color);
-  p.px(x - 2, y, color).px(x - 1, y, color).px(x + 1, y, color).px(x + 2, y, color);
 }
 
 function polka(p: Painter, w: number, h: number, color: string, step = 10, seedShift = 0) {
@@ -156,18 +102,17 @@ export function boxFront(f: Flavor): Painter {
   const p = new Painter(w, h);
   p.clear(f.c.box);
   polka(p, w, h, shade(f.c.box, 0.08), 10);
-  p.text('DOUGH-R', w / 2, 12, { font: FONT_BIG, scale: 2, bold: true, color: f.c.text, outline: INK, shadow: INK, shadowOffset: [0, 2], align: 'center' });
-  p.text('CODE', w / 2, 30, { font: FONT_BIG, scale: 2, bold: true, color: f.c.accent, outline: INK, shadow: INK, shadowOffset: [0, 2], align: 'center' });
-  holeSprite(p, 17, 37, 5, f, 3);
-  holeSprite(p, 25, 42, 3.5, f, 4);
-  holeSprite(p, 88, 37, 5, f, 5);
-  holeSprite(p, 80, 42, 3.5, f, 6);
-  // bottom band
-  p.rect(0, h - 8, w, 8, f.c.deep);
-  p.rect(0, h - 8, w, 1, INK);
-  p.text('FRESH HOLES DAILY', w / 2, h - 6, { font: FONT_TINY, color: '#ffffff', align: 'center' });
-  sparkle(p, 8, 16, '#ffffff');
-  sparkle(p, 96, 22, '#ffffff');
+  // bottom band with a scalloped top edge
+  p.rect(0, h - 7, w, 7, f.c.deep);
+  for (let x = 2; x < w; x += 6) p.disc(x + 0.5, h - 7, 2.4, f.c.deep);
+  // (the top ~7 px hide behind the lid's awning lip)
+  p.text('DOUGH-R', w / 2, 9, { font: FONT_BIG, scale: 2, bold: true, color: f.c.text, outline: INK, shadow: INK, shadowOffset: [0, 2], align: 'center' });
+  p.text('CODE', 34, 28, { font: FONT_BIG, scale: 2, bold: true, color: f.c.accent, outline: INK, shadow: INK, shadowOffset: [0, 2], align: 'center' });
+  holeSprite(p, 8, 49, 3.5, f, 4);
+  holeSprite(p, 60, 49, 3.5, f, 6);
+  // Dough-R peeks up over the bottom band, waving
+  const dough = donutPortrait({ armL: 0.5, armR: 1.65, mouth: 'open', noLegs: true }, 'front', DOUGH_FRONT);
+  stamp(p, dough, w - 1 - dough.width, h + 2 - dough.height);
   return p;
 }
 
@@ -177,18 +122,15 @@ export function boxSideRight(f: Flavor): Painter {
   p.clear(f.c.box);
   polka(p, w, h, shade(f.c.box, 0.08), 10, 2);
   awning(p, w, f);
-  drawDonut(p, 30, 10, f, 'wave');
+  const dough = donutPortrait({ armL: 2.5, armR: 0.5, eyes: 'happy', mouth: 'open' }, 'side', DOUGH_SMALL);
+  stamp(p, dough, w - 2 - dough.width, h - 1 - dough.height);
   // speech bubble
-  p.roundRect(3, 14, 28, 16, 4, INK);
-  p.roundRect(4, 15, 26, 14, 3, '#ffffff');
-  p.poly([[24, 28], [30, 28], [32, 33]], INK);
-  p.poly([[25, 28], [29, 28], [30, 31]], '#ffffff');
-  p.text('HOLE-Y', 17, 16, { font: FONT_TINY, color: INK, align: 'center' });
-  p.text('MOLY!', 17, 22, { font: FONT_TINY, color: f.c.deep, align: 'center' });
-  // weight tag
-  p.roundRect(3, h - 12, 24, 10, 3, INK);
-  p.roundRect(4, h - 11, 22, 8, 2, '#ffffff');
-  p.text('24 PCS', 15, h - 9, { font: FONT_TINY, color: INK, align: 'center' });
+  p.roundRect(3, 13, 30, 17, 5, INK);
+  p.roundRect(4, 14, 28, 15, 4, '#ffffff');
+  p.poly([[26, 28], [32, 28], [36, 34]], INK);
+  p.poly([[27, 28], [31, 28], [34, 32]], '#ffffff');
+  p.text('HOLE-Y', 18, 15, { font: FONT_TINY, color: INK, align: 'center' });
+  p.text('MOLY!', 18, 21, { font: FONT_TINY, color: f.c.deep, align: 'center' });
   return p;
 }
 
@@ -228,7 +170,7 @@ export function boxBack(f: Flavor): Painter {
   return p;
 }
 
-/** Lid top: polka dots, logo, sticker and a transparent cellophane window. */
+/** Lid top: polka dots, a small brand line and the cellophane window the link sticker covers. */
 export function lidTop(f: Flavor, window = true): Painter {
   const w = BOX_PX.w;
   const h = BOX_PX.d;
@@ -236,10 +178,10 @@ export function lidTop(f: Flavor, window = true): Painter {
   p.clear(f.c.box);
   polka(p, w, h, shade(f.c.box, 0.08), 10);
   const { x, y, w: ww, h: wh } = WINDOW;
-  // window frame
-  p.roundRect(x - 4, y - 4, ww + 8, wh + 8, 5, INK);
-  p.roundRect(x - 3, y - 3, ww + 6, wh + 6, 4, '#ffffff');
-  p.rect(x - 1, y - 1, ww + 2, wh + 2, INK);
+  // rounded window frame
+  p.roundRect(x - 5, y - 5, ww + 10, wh + 10, 8, INK);
+  p.roundRect(x - 4, y - 4, ww + 8, wh + 8, 7, '#ffffff');
+  p.roundRect(x - 1, y - 1, ww + 2, wh + 2, 3, INK);
   if (window) {
     p.ctx.clearRect(x, y, ww, wh);
   } else {
@@ -251,13 +193,9 @@ export function lidTop(f: Flavor, window = true): Painter {
     p.rect(x + 3, y + 2, 10, 1, '#ffffff');
     p.rect(x + 3, y + 4, 5, 1, '#ffffff');
   }
-  p.text('DOUGH-R CODE', w / 2, 6, { font: FONT_BIG, bold: true, color: f.c.text, outline: INK, align: 'center' });
-  p.text('HOT & FRESH', w / 2, h - 12, { font: FONT_TINY, color: '#ffffff', outline: INK, align: 'center' });
-  // sticker
-  p.burst(w - 12, h - 14, 10, 12, INK);
-  p.burst(w - 12, h - 14, 9, 12, '#ffe066');
-  p.text('FRESH', w - 11.5, h - 18, { font: FONT_TINY, color: INK, align: 'center' });
-  p.text('!', w - 11.5, h - 12, { font: FONT_TINY, color: INK, align: 'center' });
+  p.text('DOUGH-R CODE', w / 2, 5, { font: FONT_BIG, bold: true, color: f.c.text, outline: INK, align: 'center' });
+  p.text('♥', 10, h - 11, { font: FONT_BIG, color: '#ffffff', outline: INK, align: 'center' });
+  p.text('♥', w - 10, h - 11, { font: FONT_BIG, color: '#ffffff', outline: INK, align: 'center' });
   return p;
 }
 
@@ -402,7 +340,7 @@ export function brownieTexture(f: Flavor, scan = false): Painter {
 // -------------------------------------------------------------------------------------------------
 // Poster
 
-export const POSTER = { w: 112, h: 176, qrX: 16, qrY: 50, qrSize: 80 };
+export const POSTER = { w: 112, h: 188, qrX: 16, qrY: 50, qrSize: 80 };
 
 export function posterArt(f: Flavor): Painter {
   const { w, h, qrX, qrY, qrSize } = POSTER;
@@ -416,76 +354,12 @@ export function posterArt(f: Flavor): Painter {
   p.roundRect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 12, 6, INK);
   p.roundRect(qrX - 5, qrY - 5, qrSize + 10, qrSize + 10, 5, '#ffffff');
   p.rect(qrX - 2, qrY - 2, qrSize + 4, qrSize + 4, '#fdfaf2');
-  drawDonut(p, 2, h - 45, f, 'cheer');
+  const dough = donutPortrait({ armL: 2.45, armR: 2.45, eyes: 'happy', mouth: 'open' }, 'poster');
+  stamp(p, dough, 1, h - 2 - dough.height);
   holeSprite(p, 98, 42, 5, f, 2);
   holeSprite(p, 14, 42, 4, f, 3);
-  holeSprite(p, 88, h - 19, 4, f, 4);
-  holeSprite(p, 99, h - 22, 3, f, 6);
-  p.text(f.name.toUpperCase(), 48, h - 34, { font: FONT_TINY, color: '#ffffff', outline: INK });
-  p.roundRect(48, h - 24, 28, 11, 3, INK);
-  p.roundRect(49, h - 23, 26, 9, 2, '#ffffff');
-  p.text('24 PCS', 62, h - 21, { font: FONT_TINY, color: INK, align: 'center' });
-  p.text('HOLE-Y MOLY!', 48, h - 9, { font: FONT_TINY, color: f.c.text, outline: INK });
+  holeSprite(p, 99, h - 12, 4, f, 4);
+  p.text('HOLE-Y', 84, h - 36, { font: FONT_BIG, bold: true, color: f.c.text, outline: INK, align: 'center' });
+  p.text('MOLY!', 84, h - 24, { font: FONT_BIG, bold: true, color: f.c.accent, outline: INK, align: 'center' });
   return p;
-}
-
-// -------------------------------------------------------------------------------------------------
-// Voxel mascot
-
-/** Dough-R standing on little legs: a frosted donut ring facing +z (~23 x 29 x 8 voxels). */
-export function donutVoxels(f: Flavor): VoxelGrid {
-  const R = 7;
-  const r = 3.6;
-  const W = 23;
-  const g = new VoxelGrid(W, 30, 9);
-  const cx = 11.5;
-  const cy = 18.5;
-  const cz = 4.5;
-  const frost = f.c.frost;
-  const sp = sprinkleColors(f);
-  const rnd = rng(3);
-  for (let z = 0; z < 9; z++)
-    for (let y = 0; y < 30; y++)
-      for (let x = 0; x < W; x++) {
-        const dx = x + 0.5 - cx;
-        const dy = y + 0.5 - cy;
-        const dz = z + 0.5 - cz;
-        const d = Math.hypot(dx, dy);
-        const t = (d - R) * (d - R) + dz * dz;
-        if (t > r * r) continue;
-        let col = '#e7b073';
-        if (dz > 0.2 && d < R + 2.9) col = frost;
-        if (dz > 1.5 && d < R + 2.2 && rnd() < 0.09) col = sp[Math.floor(rnd() * sp.length)];
-        if (dz < -1.5) col = '#d49a5c';
-        g.set(x, y, z, col);
-      }
-  // legs + shoes
-  g.box(8, 3, 4, 8, 7, 5, '#6b3a22');
-  g.box(15, 3, 4, 15, 7, 5, '#6b3a22');
-  g.box(6, 0, 3, 9, 2, 7, '#ff5d73');
-  g.box(14, 0, 3, 17, 2, 7, '#ff5d73');
-  // arms with gloves
-  g.box(0, 17, 4, 1, 18, 5, '#6b3a22');
-  g.box(0, 19, 3, 1, 21, 5, '#ffffff');
-  g.box(21, 17, 4, 22, 18, 5, '#6b3a22');
-  g.box(21, 19, 3, 22, 21, 5, '#ffffff');
-  const front = (x: number, y: number) => {
-    for (let z = g.sz - 1; z >= 0; z--) if (g.filled(x, y, z)) return z;
-    return -1;
-  };
-  const dot = (x: number, y: number, color: string) => {
-    const z = front(x, y);
-    if (z >= 0) g.set(x, y, z, color);
-  };
-  // eyes on the upper ring, smile on the lower ring
-  for (const ex of [6, 16]) {
-    for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 2; dx++) dot(ex + dx, 20 + dy, INK);
-    dot(ex, 22, '#ffffff');
-  }
-  dot(4, 18, '#ff4f8b');
-  dot(19, 18, '#ff4f8b');
-  for (let x = 9; x <= 14; x++) dot(x, 10, '#5a1a1a');
-  dot(8, 11, '#5a1a1a');
-  dot(15, 11, '#5a1a1a');
-  return g;
 }

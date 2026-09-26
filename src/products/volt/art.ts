@@ -1,5 +1,7 @@
 import { Painter, shade, mix } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY, type BitmapFont } from '../../engine/pixelFont';
+import { buddyPortrait, type BuddySpec, type Pose } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor } from '../types';
 
 export const INK = '#1d1b26';
@@ -16,6 +18,40 @@ export const VOLT_FLAVORS: Flavor[] = [
 
 /** Wrap label: front centred at x = w/4, back at x = 3w/4. */
 export const LABEL = { w: 128, h: 80 };
+/** Label row (px from the top) the link sticker is centred on, on the front of the can. */
+export const STICKER_Y = 38;
+
+const cache = new Map<string, HTMLCanvasElement>();
+/** Volty, the Volt Energy bolt buddy, as a flat portrait (cached). */
+function voltyPortrait(pose: Pose, key: string, spec: BuddySpec = CAST.volty) {
+  let c = cache.get(key);
+  if (!c) {
+    c = buddyPortrait(spec, pose).toCanvas();
+    cache.set(key, c);
+  }
+  return c;
+}
+
+/** A smaller Volty for the can wrap. */
+const VOLTY_SMALL: BuddySpec = { ...CAST.volty, body: { ...CAST.volty.body, w: 26, h: 32 }, eyes: { ...CAST.volty.eyes, gap: 9, r: 1.6 }, mouth: { ...CAST.volty.mouth, w: 8 }, limbs: { ...CAST.volty.limbs!, arm: 9, leg: 6, thick: 5 } };
+
+/** A portrait with a 1px neon rim, so it reads on the black can (the rim glows too). */
+function neonRim(c: HTMLCanvasElement, color: string) {
+  const L = new Painter(c.width + 2, c.height + 2);
+  L.ctx.drawImage(c, 1, 1);
+  L.outline(color);
+  return L.canvas;
+}
+
+function stamp(p: Painter, c: HTMLCanvasElement, x: number, y: number, flip = false) {
+  p.ctx.save();
+  if (flip) {
+    p.ctx.translate(Math.round(x) + c.width, Math.round(y));
+    p.ctx.scale(-1, 1);
+    p.ctx.drawImage(c, 0, 0);
+  } else p.ctx.drawImage(c, Math.round(x), Math.round(y));
+  p.ctx.restore();
+}
 
 function seeded(seed: number) {
   let s = seed;
@@ -110,30 +146,23 @@ export function canLabel(f: Flavor): Painter {
 
   // ---------------- front
   const fx = w / 4;
-  // giant bolt behind the logo
-  boltIcon(p, fx - 16, 5, 34, 44, c.neonDark, c.neon, 2);
-  boltIcon(p, fx - 8, 14, 18, 26, c.neon, c.neonLight, 3);
-  italicText(p, 'VOLT', fx, 20, { font: FONT_BIG, scale: 2, bold: true, color: '#ffffff', outline: c.neon, shadow: c.neonDark });
-  const sp = 'ENERGY';
+  // neon bolt behind the logo
+  boltIcon(p, fx - 12, 3, 26, 30, c.neonDark, c.neon, 2);
+  italicText(p, 'VOLT', fx, 9, { font: FONT_BIG, scale: 2, bold: true, color: '#ffffff', outline: c.neon, shadow: c.neonDark });
   let ex = fx - 17;
-  for (const ch of sp) {
-    p.text(ch, ex, 39, { font: FONT_TINY, color: c.neonLight });
+  for (const ch of 'ENERGY') {
+    p.text(ch, ex, 26, { font: FONT_TINY, color: c.neonLight });
     ex += 6;
   }
-  // flavour pill
-  const flav = f.name.toUpperCase();
-  const tw = p.textWidth(flav, { font: FONT_TINY });
-  p.rect(fx - tw / 2 - 4, 51, tw + 8, 9, c.neon);
-  p.rect(fx - tw / 2 - 3, 52, tw + 6, 7, c.can);
-  p.text(flav, fx, 53, { font: FONT_TINY, color: '#ffffff', align: 'center' });
-  battery(p, fx - 10, 63, f);
-  p.text('500ML', fx + 22, 64, { font: FONT_TINY, color: c.neonLight, align: 'center' });
-  p.text('MAX', fx - 19, 64, { font: FONT_TINY, color: c.zap, align: 'center' });
+  // Volty peeks up from the bottom rim (the link sticker goes just above him)
+  const volty = neonRim(voltyPortrait({ armL: 2.5, armR: 0.5, mouth: 'open', noLegs: true }, 'label', VOLTY_SMALL), c.neon);
+  stamp(p, volty, fx - volty.width / 2, h - 2 - volty.height);
+  battery(p, fx + 13, 66, f);
   // sparkle ticks
   for (const [x, y] of [
     [fx - 22, 10],
-    [fx + 24, 30],
-    [fx - 25, 46],
+    [fx + 24, 18],
+    [fx - 24, 58],
   ]) {
     p.px(x, y, '#ffffff').px(x - 1, y, c.neonLight).px(x + 1, y, c.neonLight).px(x, y - 1, c.neonLight).px(x, y + 1, c.neonLight);
   }
@@ -311,7 +340,7 @@ export function sheetArt(px: number): Painter {
 // -------------------------------------------------------------------------------------------------
 // Poster
 
-export const POSTER = { w: 120, h: 168, qrX: 22, qrY: 48, qrSize: 76 };
+export const POSTER = { w: 120, h: 212, qrX: 22, qrY: 48, qrSize: 76 };
 
 function miniCan(p: Painter, f: Flavor, x: number, y: number) {
   const c = f.c;
@@ -380,13 +409,10 @@ export function posterArt(f: Flavor): Painter {
   p.rect(cx - 20, fy + fs + 5, 40, 5, '#2b2e3d');
   p.rect(cx - 16, fy + fs + 4, 32, 1, c.neon);
   p.rect(cx - 4, fy + fs + 3, 8, 2, c.neonLight);
-  // can + flavour
-  miniCan(p, f, 3, h - 56);
-  const flav = f.name.toUpperCase();
-  const tw = p.textWidth(flav, { font: FONT_TINY });
-  p.rect(cx + 8 - tw / 2 - 5, h - 26, tw + 10, 9, c.neon);
-  p.rect(cx + 8 - tw / 2 - 4, h - 25, tw + 8, 7, '#0b0a12');
-  p.text(flav, cx + 8, h - 24, { font: FONT_TINY, color: '#ffffff', align: 'center' });
-  p.text('CHARGE YOUR CODES', cx + 8, h - 13, { font: FONT_TINY, color: c.neonLight, align: 'center' });
+  // can, tagline and Volty cheering
+  p.text('CHARGE YOUR CODES', cx, fy + fs + 13, { font: FONT_TINY, color: c.neonLight, align: 'center' });
+  miniCan(p, f, 6, h - 54);
+  const volty = neonRim(voltyPortrait({ armL: 2.45, armR: 2.45, eyes: 'happy', mouth: 'open' }, 'poster'), c.neon);
+  stamp(p, volty, w - 6 - volty.width, h - 2 - volty.height);
   return p;
 }

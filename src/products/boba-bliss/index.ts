@@ -4,13 +4,15 @@ import { toonGradient } from '../../engine/voxel';
 import { Batcher, paintGeometry, toonMat } from '../../engine/batch';
 import { ease } from '../../engine/tween';
 import { audio } from '../../engine/audio';
+import { Buddy } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor, ProductContext, ProductDef, ShowcaseItem } from '../types';
 import { atlasBox } from '../common/box';
 import { layoutModules, orderSpots } from '../common/qrLayout';
 import { QRSwarm, isStructural } from '../common/swarm';
 import { Particles } from '../common/props';
 import { composePoster, posterScale } from '../common/poster';
-import { BOBA_FLAVORS, POSTER, cupWrap, jellyGlint, jellyTile, posterArt, sealArt, strawArt, trayArt } from './art';
+import { BOBA_FLAVORS, CUP_TEX, POSTER, STICKER_Y, cupWrap, jellyGlint, jellyTile, posterArt, sealArt, strawArt, trayArt } from './art';
 import { glossy } from './gloss';
 
 /** Cup proportions (showcase scale). */
@@ -229,6 +231,14 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     if (landed++ % 5 === 0) audio.play('clack', { rate: isStructural(spots[k].kind) ? 0.6 : 1.1, minGap: 0.03 });
   };
 
+  // ---------------------------------------------------------------- Pearl, the tapioca buddy
+  const pearl = new Buddy(CAST.pearl, 64);
+  pearl.billboard = true;
+  const pearlRest = new THREE.Vector3(-0.98, 0, -0.66);
+  pearl.visible = false;
+  root.add(pearl);
+  let nextAct = 0;
+
   // ---------------------------------------------------------------- state
   let time = 0;
   let phase: 'idle' | 'busy' | 'done' = 'idle';
@@ -353,7 +363,27 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
       cupPivot.rotation.y = cupYaw + t * Math.PI * 2;
     }, ease.inOutCubic, tg);
     resetCup();
+
+    // 7. one last pearl pops out of the cup... it's Pearl! It lands beside the tray and cheers
+    cup.group.updateWorldMatrix(true, false);
+    const lid = new THREE.Vector3(0, cup.top, 0).applyMatrix4(cup.group.matrixWorld);
+    pearl.visible = scanTarget === 0;
+    audio.play('pop', { rate: 1.3 });
+    void pearl.spin();
+    await tweens.tween(0.75, (t) => {
+      pearl.position.lerpVectors(lid, pearlRest, t);
+      pearl.position.y = lid.y * (1 - t) + Math.sin(Math.PI * t) * 0.6;
+      pearl.scale.setScalar(0.35 + 0.65 * t);
+    }, ease.inOutQuad, tg);
+    pearl.position.copy(pearlRest);
+    pearl.scale.setScalar(1);
+    audio.play('clack');
+    fx.burst(pearlRest, { count: 10, color: [c.tea, c.milk, '#ffffff'], speed: 1.1, up: 1.4, size: 0.03, life: 0.5 });
+    void pearl.boop();
+    await tweens.wait(0.3, tg);
+    void pearl.cheer();
     phase = 'done';
+    nextAct = time + 2.5;
   }
 
   function finish() {
@@ -362,6 +392,9 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     setStrawInCup();
     cup.bodyMat.map = cup.empty;
     swarm.settleAll();
+    pearl.position.copy(pearlRest);
+    pearl.scale.setScalar(1);
+    pearl.visible = scanTarget === 0;
     phase = 'done';
   }
 
@@ -371,8 +404,21 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     finish,
     actionLabel: 'Shake it!',
     hero: { target: new THREE.Vector3(-0.3, 0.55, 0.35), distance: 5.7, yaw: 0.1, pitch: 0.52 },
-    update(dt) {
+    // the link sticker goes on the front of the cup, tilted to follow its tapered wall
+    label: {
+      object: cup.group,
+      position: new THREE.Vector3(0, CUP.foot + CUP.H * (1 - STICKER_Y / CUP_TEX.h), CUP.rBottom + (CUP.rTop - CUP.rBottom) * (1 - STICKER_Y / CUP_TEX.h) + 0.003),
+      rotation: new THREE.Euler(Math.atan2(CUP.rTop - CUP.rBottom, CUP.H), 0, 0),
+      size: [0.42, 0.27],
+    },
+    update(dt, _time, camera) {
       time += dt;
+      pearl.update(dt, camera);
+      if (phase === 'done' && time > nextAct) {
+        nextAct = time + 3 + Math.random() * 3;
+        const r = Math.random();
+        void (r < 0.4 ? pearl.wave() : r < 0.75 ? pearl.hop() : pearl.nod());
+      }
       if (phase === 'idle') {
         const w = time % 3.4;
         cupPivot.rotation.z = w < 0.5 ? Math.sin(w * Math.PI * 8) * 0.04 * (1 - w / 0.5) : 0;
@@ -391,6 +437,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     setScanMode(on) {
       scanTarget = on ? 1 : 0;
       swarm.setScanMode(on);
+      pearl.visible = !on && phase === 'done';
       // no shadows on the tray while scanning: they would grey out light modules and the quiet zone
       for (const mesh of swarm.meshes) mesh.castShadow = !on;
       cupPivot.traverse((o) => {

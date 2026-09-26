@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { Painter, shade } from '../../engine/Painter';
-import { VoxelGrid, meshVoxels, toonGradient } from '../../engine/voxel';
+import { toonGradient } from '../../engine/voxel';
+import { Buddy, buddyPortrait } from '../../art/buddy';
+import { CAST } from '../../art/cast';
+import { pixelTexture } from '../../art/pixel';
+import { spriteGeometry } from '../../art/spriteMesh';
 import { Batcher, paintBoxFaces, paintGeometry, toonMat } from '../../engine/batch';
 import { ease } from '../../engine/tween';
 import { audio } from '../../engine/audio';
@@ -9,7 +13,7 @@ import { layoutModules } from '../common/qrLayout';
 import { isStructural } from '../common/swarm';
 import { Particles } from '../common/props';
 import { composePoster, posterScale } from '../common/poster';
-import { LABEL, POSTER, VOLT_FLAVORS, auraArt, canGlow, canLabel, dashArt, fanArt, fieldArt, lidArt, plateArt, posterArt, sheetArt, tabArt } from './art';
+import { LABEL, POSTER, STICKER_Y, VOLT_FLAVORS, auraArt, canGlow, canLabel, dashArt, fanArt, fieldArt, lidArt, plateArt, posterArt, sheetArt, tabArt } from './art';
 import { Bolts } from './bolts';
 import { glowLayer, holoMaterial, holoUniforms } from './holo';
 
@@ -67,6 +71,25 @@ function buildCan(f: Flavor, s: number, mip: boolean) {
   tabPivot.add(tab);
   group.add(tabPivot);
   return { group, bodyMat, tabPivot, lid, closedLid, openLid, top, R, mouth: new THREE.Vector3(0, top, 0.38 * R) };
+}
+
+/**
+ * Standby hologram frames: Volty waving, drawn in brightness only so the hologram material tints
+ * them neon (the ink outline stays dark, so it still reads against the shelves).
+ */
+function hologramFrames(ppu: number) {
+  return [2.35, 2.95].map((armR) => {
+    const c = buddyPortrait(CAST.volty, { armL: 0.45, armR, mouth: 'open' }).toCanvas();
+    const g = c.getContext('2d')!;
+    const img = g.getImageData(0, 0, c.width, c.height);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const l = Math.min(255, (d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11) * 1.25 + 30);
+      d[i] = d[i + 1] = d[i + 2] = l;
+    }
+    g.putImageData(img, 0, 0);
+    return { geometry: spriteGeometry(c, { ppu, anchor: [0.5, 0.5] }), map: pixelTexture(c) };
+  });
 }
 
 /** Octagonal hologram emitter with a neon ring, a lens and status LEDs. */
@@ -174,22 +197,27 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   pool.position.set(holo.x, 0.004, holo.z + 0.1);
   root.add(pool);
 
-  // standby hologram: a little voxel lightning bolt swaying above the emitter
-  const boltGrid = new VoxelGrid(9, 14, 3);
-  boltGrid.stampXY(
-    ['....#####', '...#####.', '...####..', '..####...', '..#######', '.#######.', '....###..', '...###...', '...##....', '..##.....', '..#......', '.#.......', '.........', '.........'],
-    { '#': '#ffffff' },
-    0,
-    13,
-    0,
-    2,
-  );
-  // solid (outlined) so it reads against the busy shelves; scanlines still crawl over it
-  const standbyMat = holoMaterial(U, { vertexColors: true, color: neon, blending: THREE.NormalBlending, transparent: false, depthWrite: true }, { scan: 0.3, sweep: 0 });
-  const standby = new THREE.Mesh(meshVoxels(boltGrid, { scale: 0.058, anchor: 'center' }), standbyMat);
-  standby.position.set(holo.x, 0.82, holo.z);
+  // standby hologram: a little Volty waving above the emitter. Solid (outlined) so it reads against
+  // the busy shelves; scanlines still crawl over it
+  const standby = new THREE.Group();
+  const standbyFrames = hologramFrames(70).map((fr) => {
+    const mat = holoMaterial(U, { map: fr.map, color: neon, blending: THREE.NormalBlending, transparent: false, depthWrite: true, side: THREE.DoubleSide }, { scan: 0.3, sweep: 0 });
+    const mesh = new THREE.Mesh(fr.geometry, mat);
+    standby.add(mesh);
+    return mesh;
+  });
+  standby.position.set(holo.x, 0.86, holo.z);
   root.add(standby);
   let standbyVis = 1;
+
+  // Volty himself arrives on a lightning strike at the end
+  const volty = new Buddy(CAST.volty, 70);
+  volty.billboard = true;
+  const voltyRest = new THREE.Vector3(-0.78, 0, 0.5);
+  volty.position.copy(voltyRest);
+  volty.visible = false;
+  root.add(volty);
+  let nextAct = 0;
 
   // ---------------------------------------------------------------- hologram QR
   const codeSize = 1.94; // code + 2-module quiet zone
@@ -493,7 +521,18 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
       [1, 1],
     ])
       sparks.burst(tmpA.set(holo.x + (dx * codeSize) / 2, holo.y + (dy * codeSize) / 2, holo.z), { count: 10, color: [c.neon, c.neonLight, '#ffffff'], speed: 1.2, up: 1.2, size: 0.03, life: 0.7, gravity: 2 });
+
+    // 7. ZAP! a bolt strikes the counter and Volty pops out of it, cheering
+    await tweens.wait(0.25, tg);
+    tmpB.set(voltyRest.x + 0.25, 3.2, voltyRest.z - 0.4);
+    for (let i = 0; i < 2; i++) bolts.fire(tmpB, voltyRest, { life: 0.35, jitter: 0.16, thick: 2.4 - i * 0.8 });
+    audio.play('zap', { rate: 0.9 });
+    sparks.burst(voltyRest, { count: 24, color: [c.neon, c.zap, '#ffffff'], speed: 1.6, up: 2, size: 0.03, life: 0.6, gravity: 3 });
+    volty.visible = scanTarget === 0;
+    await tweens.tween(0.4, (t) => volty.scale.setScalar(Math.max(0.001, t)), ease.outBack, tg);
+    void volty.cheer();
     phase = 'done';
+    nextAct = time + 2.5;
   }
 
   function finish() {
@@ -514,6 +553,8 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     voxDirty = true;
     colorsDirty = true;
     printing = false;
+    volty.scale.setScalar(1);
+    volty.visible = scanTarget === 0;
     phase = 'done';
   }
 
@@ -523,9 +564,17 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     finish,
     actionLabel: 'Crack it!',
     hero: { target: new THREE.Vector3(-0.45, 1.2, 0.1), distance: 6.3, yaw: 0.12, pitch: 0.17 },
-    update(dt) {
+    // the link sticker goes on the front of the can, between the logo and Volty
+    label: { object: can.group, position: new THREE.Vector3(0, CAN.foot + CAN.H * (1 - STICKER_Y / LABEL.h), can.R + 0.003), size: [0.34, 0.24] },
+    update(dt, _time, camera) {
       time += dt;
       U.uTime.value = time;
+      volty.update(dt, camera);
+      if (phase === 'done' && time > nextAct) {
+        nextAct = time + 3 + Math.random() * 3;
+        const r = Math.random();
+        void (r < 0.4 ? volty.wave() : r < 0.75 ? volty.hop() : volty.spin());
+      }
 
       // scan-mode cross-fade: neon hologram -> dark modules on a bright panel
       if (Math.abs(scanT - scanTarget) > 1e-3) {
@@ -570,8 +619,10 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
 
       standby.visible = standbyVis > 0.01;
       if (standby.visible) {
-        standby.rotation.y = Math.sin(time * 1.3) * 0.6;
-        standby.position.y = 0.82 + Math.sin(time * 2) * 0.04;
+        const wave = Math.floor(time * 3) % 2;
+        standbyFrames.forEach((m, i) => (m.visible = i === wave));
+        standby.rotation.y = Math.sin(time * 1.3) * 0.35;
+        standby.position.y = 0.86 + Math.sin(time * 2) * 0.04;
         standby.scale.setScalar(Math.max(0.001, standbyVis * (1 - scanT)));
       }
 
@@ -619,6 +670,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     focusView: () => ({ center: holo.clone(), normal: new THREE.Vector3(0, 0, 1), size: codeSize * 1.06, up: new THREE.Vector3(0, 1, 0) }),
     setScanMode(on) {
       scanTarget = on ? 1 : 0;
+      volty.visible = !on && phase === 'done';
     },
     dispose() {
       disposeTree(root);

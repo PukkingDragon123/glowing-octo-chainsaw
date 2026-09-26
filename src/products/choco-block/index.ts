@@ -2,13 +2,15 @@ import * as THREE from 'three';
 import { Painter, shade } from '../../engine/Painter';
 import { ease } from '../../engine/tween';
 import { audio } from '../../engine/audio';
-import { toonGradient, voxelMaterial, voxelMesh } from '../../engine/voxel';
+import { toonGradient } from '../../engine/voxel';
+import { Buddy } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import { paintBoxFaces, toonMat } from '../../engine/batch';
 import type { Flavor, ProductContext, ProductDef, ShowcaseItem } from '../types';
 import { atlasBox } from '../common/box';
 import { Particles } from '../common/props';
 import { composePoster, posterScale } from '../common/poster';
-import { CHOCO_FLAVORS, POSTER, SLEEVE, beanVoxels, foilTile, foilTriangle, foilWall, posterArt, sleeveBack, sleeveEdge, sleeveFront } from './art';
+import { CHOCO_FLAVORS, LABEL, POSTER, SLEEVE, foilTile, foilTriangle, foilWall, posterArt, sleeveBack, sleeveEdge, sleeveFront } from './art';
 
 /** Bar size (square), slab thickness, foil wall height. */
 const W = 1.9;
@@ -372,11 +374,14 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   const sleeveRest = new THREE.Vector3(-2.2 - barPos.x, SLEEVE_T / 2 + 0.002, -1.2 - barPos.z);
   const sleeveRestRy = 0.5;
 
-  // mascot
-  const bean = voxelMesh(beanVoxels(), { scale: 0.034, anchor: 'bottom-center' });
-  const beanRest = new THREE.Vector3(1.95, 0, 1.25);
-  bean.visible = false;
-  root.add(bean);
+  // Choco, the mascot, hops in beside the bar at the end
+  const choco = new Buddy(CAST.choco, 60);
+  choco.billboard = true;
+  const chocoRest = new THREE.Vector3(1.78, 0, -0.62);
+  choco.visible = false;
+  root.add(choco);
+  let scanning = false;
+  let nextAct = 0;
 
   const fx = new Particles(320);
   fx.floorY = 0.01;
@@ -413,7 +418,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     for (const fl of foil.flaps) setFlap(fl, 0);
     foil.under.visible = true;
     grid.hideAll();
-    bean.visible = false;
+    choco.visible = false;
   }
 
   function setFinal() {
@@ -425,9 +430,8 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     for (const fl of foil.flaps) setFlap(fl, 1);
     foil.under.visible = false;
     grid.showAll();
-    bean.visible = true;
-    bean.position.copy(beanRest);
-    bean.rotation.set(0, -0.45, 0);
+    choco.visible = !scanning;
+    choco.position.copy(chocoRest);
   }
   setWrapped();
 
@@ -492,20 +496,17 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     if (!alive()) return;
     audio.play('tada');
     fx.burst(new THREE.Vector3(barPos.x, 0.4, barPos.z), { count: 50, color: [f.c.choco, f.c.white, f.c.main, f.c.accent], speed: 2.4, up: 3, size: 0.045, life: 1.2 });
-    // Bo the bean hops in
-    bean.visible = true;
-    const start = new THREE.Vector3(3.2, 0, 1.6);
-    await tweens.tween(0.75, (t) => {
-      bean.position.lerpVectors(start, beanRest, t);
-      bean.position.y = Math.abs(Math.sin(t * Math.PI * 2)) * 0.35 * (1 - t * 0.5);
-      bean.rotation.set(0, -0.45 - (1 - t) * 0.6, 0);
-    }, ease.linear, tg);
-    await tweens.tween(0.5, (t) => {
-      bean.rotation.y = -0.45 + t * Math.PI * 2;
-      bean.position.y = Math.sin(t * Math.PI) * 0.3;
-    }, ease.inOutCubic, tg);
+    // Choco pops up beside the bar and cheers
+    choco.visible = !scanning;
+    choco.position.set(chocoRest.x, -1.3, chocoRest.z);
+    audio.play('pop');
+    await tweens.tween(0.55, (t) => (choco.position.y = -1.3 * (1 - t)), ease.outBack, tg);
+    fx.burst(chocoRest, { count: 14, color: [f.c.accent, '#ffffff', f.c.pale], speed: 1.3, up: 2, size: 0.035, life: 0.7 });
+    void choco.cheer();
+    await tweens.wait(0.6, tg);
     if (!alive()) return;
     done = true;
+    nextAct = time + 2.5;
   }
 
   function finish() {
@@ -522,7 +523,14 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     finish,
     actionLabel: 'Unwrap it!',
     hero: { target: new THREE.Vector3(0.22, 0.4, 0.3), distance: 5.0, yaw: 0.1, pitch: 0.58 },
-    update(dt) {
+    // the link sticker goes on the cream ribbon at the bottom of the sleeve (its art faces pack +Y)
+    label: {
+      object: pack,
+      position: new THREE.Vector3(-SLEEVE_W / 2 + (LABEL.cx / SLEEVE.w) * SLEEVE_W, FOIL_H / 2 + SLEEVE_T / 2 + 0.003, -(W + 0.03) / 2 + (LABEL.cy / SLEEVE.h) * (W + 0.03)),
+      rotation: new THREE.Euler(-Math.PI / 2, 0, 0),
+      size: [0.78, 0.34],
+    },
+    update(dt, _time, camera) {
       time += dt;
       if (idle) {
         pack.position.y = standY + Math.sin(time * 1.8) * 0.06;
@@ -531,13 +539,19 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
       }
       grid.update(dt);
       fx.update(dt);
-      if (done) {
-        bean.position.y = Math.abs(Math.sin(time * 2.4)) * 0.06;
-        bean.rotation.z = Math.sin(time * 2.4) * 0.05;
+      choco.update(dt, camera);
+      if (done && time > nextAct) {
+        nextAct = time + 3 + Math.random() * 3;
+        const r = Math.random();
+        void (r < 0.4 ? choco.wave() : r < 0.75 ? choco.hop() : choco.spin());
       }
     },
     focusView: () => ({ center: new THREE.Vector3(barPos.x, H_BAR + pillowH, barPos.z), normal: new THREE.Vector3(0, 1, 0), size: W, up: new THREE.Vector3(0, 0, -1) }),
-    setScanMode: (on) => grid.setScanMode(on),
+    setScanMode: (on) => {
+      scanning = on;
+      grid.setScanMode(on);
+      choco.visible = !on && done;
+    },
     dispose() {
       grid.dispose();
       disposeTree(root);
@@ -545,9 +559,9 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   };
 }
 
-/** Free GPU resources this showcase owns (the shared toon/voxel materials and toon ramp are kept). */
+/** Free GPU resources this showcase owns (the shared toon material and toon ramp are kept). */
 function disposeTree(root: THREE.Object3D) {
-  const keep = new Set<THREE.Material>([toonMat(), voxelMaterial()]);
+  const keep = new Set<THREE.Material>([toonMat()]);
   const ramp = toonGradient();
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;

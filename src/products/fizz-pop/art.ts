@@ -1,5 +1,7 @@
-import { Painter, shade, mix } from '../../engine/Painter';
+import { Painter, shade } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
+import { buddyPortrait, type BuddySpec, type Pose } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor } from '../types';
 
 export const INK = '#1d1b26';
@@ -17,6 +19,8 @@ export const FIZZ_FLAVORS: Flavor[] = [
 
 /** Wrap label. The front panel is centred at x = w/4, the back panel at x = 3w/4. */
 export const LABEL = { w: 192, h: 88 };
+/** Label row (px from the top) the link sticker is centred on, on the front of the can. */
+export const STICKER_Y = 50;
 
 function seeded(seed: number) {
   let s = seed;
@@ -33,48 +37,28 @@ export function bubbleRing(p: Painter, cx: number, cy: number, r: number, col: s
   p.px(cx - Math.round(r * 0.45), cy - Math.round(r * 0.45), glint);
 }
 
-/** "Fizzy", the bubble mascot: round soap bubble with a face, stubby arms and a waving hand. */
-export function drawMascot(target: Painter, x: number, y: number, f: Flavor, opts: { wave?: boolean; wink?: boolean } = {}) {
-  const L = new Painter(34, 34);
-  const body = '#eefcff';
-  const body2 = '#bfe7f7';
-  const cx = 17;
-  const cy = 19;
-  const r = 11.5;
-  // sprout of tiny bubbles on the head
-  L.disc(cx + 5, cy - r - 3, 2, body);
-  L.disc(cx + 8, cy - r - 7, 1.4, body);
-  // arms
-  L.ellipse(cx - r + 0.5, cy + 4, 2.6, 2.2, body);
-  if (opts.wave) L.ellipse(cx + r + 1, cy - 6, 2.4, 2.6, body);
-  else L.ellipse(cx + r - 0.5, cy + 4, 2.6, 2.2, body);
-  // body with a soft crescent shade (lower right)
-  L.disc(cx, cy, r, body2);
-  L.disc(cx - 1.2, cy - 1.2, r - 1.3, body);
-  // big glossy highlight
-  L.ellipse(cx - 5.5, cy - 6, 3, 2, '#ffffff');
-  L.px(cx - 8, cy - 3, '#ffffff').px(cx - 8, cy - 2, '#ffffff');
-  // eyes
-  L.ellipse(cx - 4, cy + 0.5, 1.7, 2.4, INK);
-  if (opts.wink) {
-    L.rect(cx + 2, cy + 1, 4, 1, INK);
-    L.px(cx + 2, cy, INK);
-  } else L.ellipse(cx + 4, cy + 0.5, 1.7, 2.4, INK);
-  L.px(cx - 5, cy - 1, '#ffffff');
-  if (!opts.wink) L.px(cx + 3, cy - 1, '#ffffff');
-  // cheeks
-  L.ellipse(cx - 7.5, cy + 3.5, 1.8, 1.1, '#ff9fb8');
-  L.ellipse(cx + 7.5, cy + 3.5, 1.8, 1.1, '#ff9fb8');
-  // open smile
-  L.rect(cx - 2, cy + 3, 5, 1, INK);
-  L.px(cx - 2, cy + 4, INK).px(cx + 2, cy + 4, INK);
-  L.rect(cx - 1, cy + 4, 3, 1, '#e8475f');
-  L.rect(cx - 1, cy + 5, 3, 1, INK);
-  L.outline(INK);
-  // flavour-tinted fizz dots inside the bubble
-  L.px(cx + 6, cy - 5, mix(body2, f.c.can, 0.35));
-  L.px(cx + 3, cy - 8, mix(body2, f.c.can, 0.35));
-  target.blit(L, x - cx, y - cy);
+const cache = new Map<string, HTMLCanvasElement>();
+/** Fizzy, the Fizz Pop bubble buddy, as a flat portrait (cached). */
+function fizzyPortrait(pose: Pose, key: string, spec: BuddySpec = CAST.fizzy) {
+  let c = cache.get(key);
+  if (!c) {
+    c = buddyPortrait(spec, pose).toCanvas();
+    cache.set(key, c);
+  }
+  return c;
+}
+
+/** A smaller Fizzy for the can wrap. */
+const FIZZY_SMALL: BuddySpec = { ...CAST.fizzy, body: { ...CAST.fizzy.body, w: 28, h: 26 }, limbs: { ...CAST.fizzy.limbs!, arm: 10, leg: 7, thick: 5 } };
+
+function stamp(p: Painter, c: HTMLCanvasElement, x: number, y: number, flip = false) {
+  p.ctx.save();
+  if (flip) {
+    p.ctx.translate(Math.round(x) + c.width, Math.round(y));
+    p.ctx.scale(-1, 1);
+    p.ctx.drawImage(c, 0, 0);
+  } else p.ctx.drawImage(c, Math.round(x), Math.round(y));
+  p.ctx.restore();
 }
 
 function barcode(p: Painter, x: number, y: number, w: number, h: number, seed = 7) {
@@ -148,26 +132,14 @@ export function canLabel(f: Flavor): Painter {
 
   // ---------------- front panel (centre x = w/4)
   const fx = w / 4;
-  drawLogo(p, f, fx, 10, 2);
-  // "NEW" starburst
-  p.burst(fx + 36, 13, 7, 10, INK);
-  p.burst(fx + 36, 13, 6, 10, c.accent);
-  p.text('NEW', fx + 36, 11, { font: FONT_TINY, color: INK, align: 'center' });
-  // mascot sitting on the swoosh
-  drawMascot(p, fx - 1, 62, f, { wave: true });
-  // flavour pill
-  const flav = f.name.toUpperCase();
-  const tw = p.textWidth(flav, { font: FONT_TINY });
-  p.roundRect(fx - tw / 2 - 4, 71, tw + 8, 9, 3, INK);
-  p.text(flav, fx, 73, { font: FONT_TINY, color: '#ffffff', align: 'center' });
-  // volume tag (right) + ice cold (left)
-  p.roundRect(fx + 19, 55, 19, 9, 3, INK);
-  p.roundRect(fx + 20, 56, 17, 7, 2, '#ffffff');
-  p.text('330', fx + 28, 57, { font: FONT_TINY, color: INK, align: 'center' });
-  p.text('ML', fx + 28, 65, { font: FONT_TINY, color: '#ffffff', outline: INK, align: 'center' });
-  snowflake(p, fx - 27, 54, '#ffffff');
-  p.text('ICE', fx - 27, 58, { font: FONT_TINY, color: '#ffffff', outline: INK, align: 'center' });
-  p.text('COLD', fx - 27, 64, { font: FONT_TINY, color: '#ffffff', outline: INK, align: 'center' });
+  drawLogo(p, f, fx, 6, 2);
+  // Fizzy peeks up over the bottom rim, antenna tucked behind the sticker spot
+  const fizzy = fizzyPortrait({ armL: 2.5, armR: 0.5, mouth: 'open', noLegs: true }, 'label', FIZZY_SMALL);
+  stamp(p, fizzy, fx - fizzy.width / 2, h - 2 - fizzy.height);
+  snowflake(p, fx - 27, 70, '#ffffff');
+  snowflake(p, fx + 28, 64, '#ffffff');
+  bubbleRing(p, fx + 25, 74, 2.5, '#ffffff');
+  bubbleRing(p, fx - 24, 60, 2, '#ffffff');
 
   // ---------------- back panel (centre x = 3w/4)
   const bx = (w * 3) / 4;
@@ -189,8 +161,9 @@ export function canLabel(f: Flavor): Painter {
     p.text(v, tx + 55, ry, { font: FONT_TINY, color: INK, align: 'right' });
   });
   barcode(p, bx - 26, 64, 26, 8);
-  // little mascot on the back
-  drawMascot(p, bx + 20, 67, f, { wink: true });
+  // little Fizzy on the back
+  const small = fizzyPortrait({ armL: 0.5, armR: 2.5, eyes: 'wink', mouth: 'grin', noLegs: true }, 'back', { ...FIZZY_SMALL, body: { ...FIZZY_SMALL.body, w: 20, h: 19 }, limbs: { ...FIZZY_SMALL.limbs!, arm: 7, thick: 4 } });
+  stamp(p, small, bx + 20 - small.width / 2, h - 7 - small.height);
   // ice-cold condensation droplets all over
   const drops = seeded(29);
   for (let i = 0; i < 34; i++) {
@@ -364,7 +337,7 @@ export function counterIce(): Painter {
 // -------------------------------------------------------------------------------------------------
 // Poster
 
-export const POSTER = { w: 128, h: 168, qrX: 26, qrY: 42, qrSize: 76 };
+export const POSTER = { w: 128, h: 192, qrX: 26, qrY: 42, qrSize: 76 };
 
 function tinyCan(p: Painter, f: Flavor, x: number, y: number) {
   const L = new Painter(30, 48);
@@ -379,7 +352,7 @@ function tinyCan(p: Painter, f: Flavor, x: number, y: number) {
   for (let xx = 3; xx < 27; xx++) L.px(xx, 28 + Math.round(Math.sin(xx * 0.5) * 1.5), c.stripe);
   L.text('FIZZ', 15, 12, { font: FONT_TINY, color: c.stripe, align: 'center' });
   L.text('POP', 15, 19, { font: FONT_TINY, color: c.accent, align: 'center' });
-  L.disc(15, 34, 3, '#eefcff');
+  L.disc(15, 34, 3, '#9fe3ff');
   L.px(14, 34, INK).px(16, 34, INK);
   // metal top / bottom
   L.rect(5, 3, 20, 3, '#c9d1dc');
@@ -407,9 +380,6 @@ export function posterArt(f: Flavor): Painter {
   for (let i = 0; i < 40; i++) bubbleRing(p, rnd() * w, rnd() * h, 1 + rnd() * 3, shade(c.can, 0.16), shade(c.can, 0.35));
   // logo
   drawLogo(p, f, cx - 1, 4, 2);
-  p.burst(cx + 40, 16, 9, 10, INK);
-  p.burst(cx + 40, 16, 8, 10, c.accent);
-  p.text('NEW', cx + 40, 14, { font: FONT_TINY, color: INK, align: 'center' });
   // frosted panel frame around the code
   const fx = qrX - 6;
   const fy = qrY - 6;
@@ -434,11 +404,9 @@ export function posterArt(f: Flavor): Painter {
   // can + mascot at the bottom
   tinyCan(p, f, 4, h - 50);
   for (let i = 0; i < 5; i++) bubbleRing(p, 19 + (i % 2) * 5, h - 54 - i * 7, 1.5 + (i % 3) * 0.6, '#ffffff');
-  drawMascot(p, w - 22, h - 22, f, { wave: true });
-  // bottom band
-  const flav = f.name.toUpperCase();
-  p.roundRect(cx - 24, h - 25, 48, 9, 3, INK);
-  p.text(flav, cx, h - 23, { font: FONT_TINY, color: '#ffffff', align: 'center' });
-  p.text('330ML  ICE COLD', cx, h - 12, { font: FONT_TINY, color: '#ffffff', outline: INK, align: 'center' });
+  const fizzy = fizzyPortrait({ armL: 2.45, armR: 2.45, eyes: 'happy', mouth: 'open' }, 'poster');
+  stamp(p, fizzy, w - 4 - fizzy.width, h - 2 - fizzy.height);
+  p.text('ICE', 50, h - 34, { font: FONT_BIG, bold: true, color: '#ffffff', outline: INK, align: 'center' });
+  p.text('COLD!', 50, h - 22, { font: FONT_BIG, bold: true, color: c.accent, outline: INK, align: 'center' });
   return p;
 }

@@ -4,13 +4,15 @@ import { toonGradient } from '../../engine/voxel';
 import { Batcher, paintGeometry, toonMat } from '../../engine/batch';
 import { ease } from '../../engine/tween';
 import { audio } from '../../engine/audio';
+import { Buddy } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor, ProductContext, ProductDef, ShowcaseItem } from '../types';
 import { atlasBox } from '../common/box';
 import { layoutModules, orderSpots } from '../common/qrLayout';
 import { QRSwarm, isStructural } from '../common/swarm';
 import { Particles } from '../common/props';
 import { composePoster, posterScale } from '../common/poster';
-import { FIZZ_FLAVORS, LABEL, POSTER, baseFront, baseTop, canLabel, counterIce, iceGlint, iceTile, lidArt, panelArt, posterArt, tabArt } from './art';
+import { FIZZ_FLAVORS, LABEL, POSTER, STICKER_Y, baseFront, baseTop, canLabel, counterIce, iceGlint, iceTile, lidArt, panelArt, posterArt, tabArt } from './art';
 import { glossy } from './gloss';
 
 /** Can proportions (showcase scale). The label is 1 unit tall and wraps exactly once. */
@@ -283,6 +285,14 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     bubbleScale.copy(air ? airBubble : bead);
   };
 
+  // ---------------------------------------------------------------- Fizzy, the bubble buddy
+  const fizzy = new Buddy(CAST.fizzy, 64);
+  fizzy.billboard = true;
+  const fizzyRest = new THREE.Vector3(-0.92, 0, 0.55);
+  fizzy.visible = false;
+  root.add(fizzy);
+  let nextAct = 0;
+
   // ---------------------------------------------------------------- state
   let time = 0;
   let phase: 'idle' | 'busy' | 'done' = 'idle';
@@ -389,7 +399,25 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
       canPivot.rotation.y = canYaw + t * Math.PI * 2;
     }, ease.inOutCubic, tg);
     resetCan();
+
+    // 7. one last bubble floats out of the can... it's Fizzy! He lands beside the wall and cheers
+    const mw = mouthWorld().clone();
+    fizzy.visible = scanTarget === 0;
+    audio.play('fizz');
+    audio.play('pop', { rate: 1.5 });
+    await tweens.tween(0.9, (t) => {
+      fizzy.position.lerpVectors(mw, fizzyRest, t);
+      fizzy.position.y = mw.y * (1 - t) + Math.sin(Math.PI * t) * 0.7;
+      fizzy.scale.setScalar(0.3 + 0.7 * t);
+    }, ease.inOutQuad, tg);
+    fizzy.position.copy(fizzyRest);
+    fizzy.scale.setScalar(1);
+    sparkle.burst(fizzyRest, { count: 12, color: ['#ffffff', '#bfe9ff', c.foam], speed: 1.1, up: 1.4, size: 0.03, life: 0.5, gravity: 2 });
+    void fizzy.boop();
+    await tweens.wait(0.3, tg);
+    void fizzy.cheer();
     phase = 'done';
+    nextAct = time + 2.5;
   }
 
   function finish() {
@@ -399,6 +427,9 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     panelGroup.position.y = 0;
     setBubbleLook(false);
     swarm.settleAll();
+    fizzy.position.copy(fizzyRest);
+    fizzy.scale.setScalar(1);
+    fizzy.visible = scanTarget === 0;
     phase = 'done';
   }
 
@@ -408,8 +439,16 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     finish,
     actionLabel: 'Crack it open!',
     hero: { target: new THREE.Vector3(-0.4, 1.05, 0.15), distance: 5.6, yaw: 0.18, pitch: 0.24 },
-    update(dt) {
+    // the link sticker goes on the front of the can, over the swoosh
+    label: { object: can.group, position: new THREE.Vector3(0, CAN.foot + CAN.H * (1 - STICKER_Y / LABEL.h), can.radius + 0.003), size: [0.4, 0.27] },
+    update(dt, _time, camera) {
       time += dt;
+      fizzy.update(dt, camera);
+      if (phase === 'done' && time > nextAct) {
+        nextAct = time + 3 + Math.random() * 3;
+        const r = Math.random();
+        void (r < 0.4 ? fizzy.wave() : r < 0.75 ? fizzy.hop() : fizzy.spin());
+      }
       // bubble float field: geyser first, then drift into a fluffy cloud
       if (phase === 'busy') {
         const pos = bubbles.pos;
@@ -455,6 +494,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     setScanMode(on) {
       scanTarget = on ? 1 : 0;
       swarm.setScanMode(on);
+      fizzy.visible = !on && phase === 'done';
     },
     dispose() {
       disposeTree(root);
