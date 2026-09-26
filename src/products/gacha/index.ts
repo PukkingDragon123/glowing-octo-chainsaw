@@ -1,6 +1,9 @@
 import * as THREE from 'three';
-import { Painter } from '../../engine/Painter';
-import { toonGradient, voxelMesh } from '../../engine/voxel';
+import { Painter, shade } from '../../engine/Painter';
+import { toonGradient } from '../../engine/voxel';
+import { Kit } from '../../store/kit';
+import { Buddy } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import { ease, rng } from '../../engine/tween';
 import { audio } from '../../engine/audio';
 import { LAYER_NO_OUTLINE } from '../../engine/PixelRenderer';
@@ -9,20 +12,19 @@ import { atlasBox } from '../common/box';
 import { qrDecal } from '../common/qrLayout';
 import { Particles } from '../common/props';
 import { composePoster, posterScale } from '../common/poster';
-import { CAPSULE_COLORS, GACHA_FLAVORS, INK, MACHINE, PLAQUE, RED, capsuleTopArt, coinVoxels, crankVoxels, machineLabel, machineVoxels, plaqueArt, plaqueBack } from './art';
+import { CAPSULE_COLORS, GACHA_FLAVORS, INK, MACHINE, PLAQUE, RED, RED_DARK, SILVER, SILVER_DARK, bandArt, capsuleTopArt, panelArt, plaqueArt, plaqueBack } from './art';
 import { gachaPosterArt } from './poster';
 
-const S = MACHINE.scale;
-/** Machine-local helpers: voxel coordinate → local position (grid anchored bottom-centre). */
-const vx = (x: number) => (x - MACHINE.sx / 2) * S;
-const vz = (z: number) => (z - MACHINE.sz / 2) * S;
-const BASE_TOP = 26 * S;
+/** Top of the machine body (the dome sits on it) and the centre of the glass dome. */
+const BASE_TOP = MACHINE.top;
 const DOME_R = 0.43;
-const DOME_C = new THREE.Vector3(0, BASE_TOP + 0.27, vz(9));
-const CRANK_S = S * 0.85;
-const CRANK_POS = new THREE.Vector3(vx(11), 16.5 * S, vz(21) + 2 * CRANK_S);
-const SLOT_POS = new THREE.Vector3(vx(11), 20 * S, vz(19.5));
+const DOME_C = new THREE.Vector3(0, BASE_TOP + 0.27, -0.07);
+const MECH_FRONT = MACHINE.front + MACHINE.mech.d;
+const CRANK_POS = new THREE.Vector3(0, MACHINE.crank.y, MECH_FRONT + 0.02);
+const SLOT_POS = new THREE.Vector3(0, MACHINE.mech.y + MACHINE.mech.h, MACHINE.front + MACHINE.mech.d / 2);
 const CAP_R = 0.17;
+/** Capsule centre height while it rolls out of the chute (it just fits the mouth). */
+const CHUTE_Y = MACHINE.chute.y + 0.04 + CAP_R;
 const PX = 1.1 / PLAQUE.w;
 const PLAQUE_W = PLAQUE.w * PX;
 const PLAQUE_H = PLAQUE.h * PX;
@@ -47,16 +49,84 @@ function withMipmaps(obj: THREE.Object3D) {
   return obj;
 }
 
-/** Transparent dome + cap: returns the group and the capsule pile inside. */
+/**
+ * Rounded machine body: plinth, soft red body with a white header band (logo), a cream prize window,
+ * a silver chute with a dark mouth and the coin mech. Built at unit scale.
+ */
+function machineBody(f: Flavor, withLabel: boolean) {
+  const g = new THREE.Group();
+  const M = MACHINE;
+  const zc = M.front - M.d / 2;
+  const k = new Kit();
+  k.rbox(M.w + 0.08, 0.08, M.d + 0.06, 0.04, RED_DARK, 0, 0.03, zc);
+  for (const x of [-0.4, 0.4]) for (const z of [zc - 0.33, zc + 0.33]) k.sphere(0.05, RED_DARK, x, 0.035, z, 0.7);
+  k.rbox(M.w, M.top - 0.07, M.d, 0.14, RED, 0, 0.07, zc);
+  k.rbox(M.w + 0.016, M.band.h, M.d + 0.016, 0.1, '#ffffff', 0, M.band.y, zc);
+  k.cyl(0.43, 0.45, 0.05, SILVER, 0, M.top - 0.01, DOME_C.z, 32);
+  const C = M.chute;
+  k.rbox(C.w, C.h, 0.08, 0.07, SILVER, 0, C.y, M.front + 0.02);
+  k.rbox(C.w - 0.12, C.h - 0.1, 0.08, 0.05, '#2c2838', 0, C.y + 0.04, M.front + 0.022);
+  const Mh = M.mech;
+  k.rbox(Mh.w, Mh.h, Mh.d + 0.02, 0.05, SILVER, 0, Mh.y, M.front + Mh.d / 2 - 0.01);
+  k.rbox(0.16, 0.014, 0.03, 0.006, INK, 0, Mh.y + Mh.h - 0.004, SLOT_POS.z);
+  k.sphere(0.024, '#ff6b76', Mh.w / 2 - 0.06, Mh.y + 0.055, MECH_FRONT + 0.004);
+  const P = M.panel;
+  k.rbox(P.w + 0.04, P.h + 0.04, 0.03, 0.03, shade(RED, -0.25), 0, P.y - 0.02, M.front);
+  g.add(k.build());
+  // a pink heart on each side
+  const heart = new Painter(9, 8);
+  heart.sprite(['.##.##.', '#######', '#######', '.#####.', '..###..', '...#...'], 1, 1, { '#': '#ffc2d4' });
+  heart.outline('#ffffff');
+  const heartMat = new THREE.MeshToonMaterial({ map: heart.texture(), gradientMap: toonGradient(), alphaTest: 0.5 });
+  for (const side of [-1, 1]) {
+    const hm = new THREE.Mesh(new THREE.PlaneGeometry(0.27, 0.24), heartMat);
+    hm.position.set(side * (M.w / 2 + 0.003), 0.66, zc);
+    hm.rotation.y = side * Math.PI / 2;
+    g.add(hm);
+  }
+  const decal = (tex: THREE.Texture, w: number, h: number, y: number, z: number) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshToonMaterial({ map: tex, gradientMap: toonGradient(), alphaTest: 0.5 }));
+    m.position.set(0, y, z);
+    g.add(m);
+  };
+  decal(bandArt().texture(), 0.56, 0.09, M.band.y + M.band.h / 2, M.front + 0.01);
+  if (withLabel) decal(panelArt(f).texture(), P.w, P.h, P.y + P.h / 2, M.front + 0.017);
+  return g;
+}
+
+/** The big turning handle (faces +Z, turns about Z): silver disc, white bar, yellow knobs. */
+function crankModel() {
+  const k = new Kit();
+  k.add(new THREE.CylinderGeometry(0.16, 0.16, 0.03, 28), SILVER_DARK, 0, 0, -0.01, Math.PI / 2);
+  k.add(new THREE.CylinderGeometry(0.135, 0.135, 0.04, 28), SILVER, 0, 0, 0.005, Math.PI / 2);
+  k.rbox(0.44, 0.075, 0.05, 0.035, '#ffffff', 0, -0.0375, 0.045);
+  for (const x of [-0.22, 0.22]) k.sphere(0.06, '#ffd23f', x, 0, 0.05);
+  k.add(new THREE.CylinderGeometry(0.035, 0.035, 0.03, 12), '#eef1f5', 0, 0, 0.08, Math.PI / 2);
+  return k.build();
+}
+
+/** Gold play coin in the XY plane (faces ±Z). */
+function coinModel() {
+  const face = new Painter(24, 24);
+  face.clear('#c8930f');
+  face.disc(12, 12, 11, '#e0a21b');
+  face.disc(12, 12, 9, '#f7c948');
+  face.disc(12, 12, 4, '#ffe88a');
+  face.px(8, 6, '#fff6c8');
+  const faceMat = new THREE.MeshToonMaterial({ map: face.texture(), gradientMap: toonGradient() });
+  const geo = new THREE.CylinderGeometry(0.1, 0.1, 0.044, 24);
+  geo.rotateX(Math.PI / 2);
+  const m = new THREE.Mesh(geo, [new THREE.MeshToonMaterial({ color: '#d9a21e', gradientMap: toonGradient() }), faceMat, faceMat]);
+  m.castShadow = true;
+  return m;
+}
+
+/** The whole machine: body, glass dome, cap and the capsule pile inside. */
 function buildMachine(f: Flavor, scale = 1, withLabel = true) {
   const group = new THREE.Group();
-  const base = voxelMesh(machineVoxels(), { scale: S * scale, anchor: 'bottom-center' });
-  group.add(base);
-  if (withLabel) {
-    const lab = new THREE.Mesh(new THREE.PlaneGeometry(0.56 * scale, 0.21 * scale), new THREE.MeshToonMaterial({ map: machineLabel(f).texture(), gradientMap: toonGradient() }));
-    lab.position.set(0, 1.02 * scale, (vz(18) + 0.003) * scale);
-    group.add(lab);
-  }
+  const body = machineBody(f, withLabel);
+  body.scale.setScalar(scale);
+  group.add(body);
   // dome glass: a tinted inner shell (reads as a bowl behind the capsules) + a faint front shell
   const shellGeo = new THREE.SphereGeometry(DOME_R * scale, 22, 16);
   const back = new THREE.Mesh(shellGeo, new THREE.MeshBasicMaterial({ color: '#bfe6ff', transparent: true, opacity: 0.28, depthWrite: false, side: THREE.BackSide }));
@@ -154,10 +224,10 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   root.add(machine);
   const built = buildMachine(f);
   machine.add(built.group);
-  const crank = voxelMesh(crankVoxels(), { scale: CRANK_S, anchor: 'center' });
+  const crank = crankModel();
   crank.position.copy(CRANK_POS);
   machine.add(crank);
-  const coin = voxelMesh(coinVoxels(), { scale: 0.022, anchor: 'center' });
+  const coin = coinModel();
   const coinRestLocal = new THREE.Vector3(0.42, 0.011, 0.72);
   coin.position.copy(coinRestLocal);
   coin.rotation.set(-Math.PI / 2, 0, 0.4);
@@ -246,6 +316,28 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   const bulbOff = new THREE.Color('#5a4a6a');
   const trail = { count: 1, color: [f.c.glow, '#ffffff', '#ffe066'], speed: 0.3, up: 0.6, size: 0.035, life: 0.8, gravity: 0.2 };
 
+  // capsu, the capsule buddy, pops up between the machine and the prize to cheer
+  const capsuAt = new THREE.Vector3(-0.18, 0, 0.8);
+  const capsu = new Buddy(CAST.capsu, 72);
+  capsu.billboard = true;
+  capsu.position.copy(capsuAt);
+  capsu.visible = false;
+  root.add(capsu);
+  let capsuNext = 4;
+  function popCapsu(animated: boolean) {
+    capsu.position.copy(capsuAt);
+    capsu.visible = !scanMode;
+    if (!animated) {
+      capsu.scale.setScalar(1);
+      return;
+    }
+    capsu.scale.setScalar(0.01);
+    void tweens.tween(0.5, (t) => {
+      capsu.scale.setScalar(Math.max(0.01, ease.outBack(t)));
+      capsu.position.y = capsuAt.y + Math.sin(t * Math.PI) * 0.35;
+    }, ease.linear, tg).then(() => void capsu.cheer());
+  }
+
   /** Back to the untouched machine (so reveal() can replay after finish()). */
   function resetIdle() {
     machine.position.x = -1.05;
@@ -269,6 +361,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     beam.visible = false;
     beamMat.opacity = 0;
     sparkleOn = false;
+    capsu.visible = false;
     done = false;
   }
 
@@ -294,6 +387,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     beam.visible = false;
     beamMat.opacity = 0;
     sparkleOn = false;
+    popCapsu(false);
   }
 
   async function reveal() {
@@ -335,8 +429,8 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
 
     // 3) the capsule rolls out of the chute and across the counter
     cap.group.visible = true;
-    const p0 = toRoot(new THREE.Vector3(0, 3 * S + CAP_R, vz(14)), new THREE.Vector3());
-    const p1 = toRoot(new THREE.Vector3(0, 3 * S + CAP_R, vz(19) + CAP_R + 0.02), new THREE.Vector3());
+    const p0 = toRoot(new THREE.Vector3(0, CHUTE_Y, MACHINE.front - CAP_R), new THREE.Vector3());
+    const p1 = toRoot(new THREE.Vector3(0, CHUTE_Y, MACHINE.front + 0.08 + CAP_R), new THREE.Vector3());
     const p2 = new THREE.Vector3(p1.x + 0.12, CAP_R, p1.z + 0.22);
     const q0 = new THREE.Quaternion();
     cap.group.quaternion.copy(q0);
@@ -404,6 +498,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     plaque.rotation.y = restYaw;
     sparkleOn = false;
     audio.play('tada');
+    popCapsu(true);
     sparks.burst(_v.set(target.x, restY, target.z + 0.1), { count: 50, color: [f.c.glow, '#ffffff', '#ffe066'], speed: 1.8, up: 1.4, size: 0.04, life: 1.1, gravity: 1.5 });
     await tweens.tween(0.9, (t) => (beamMat.opacity = 0.45 * (1 - t)), ease.inQuad, tg);
     beam.visible = false;
@@ -426,8 +521,18 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     finish,
     actionLabel: 'Turn the crank!',
     hero: { target: new THREE.Vector3(-0.12, 0.95, 0.1), distance: 4.5, yaw: 0.05, pitch: 0.27 },
-    update(dt) {
+    // the prize-card window on the machine front, under the logo band
+    label: { object: machine, position: new THREE.Vector3(0, MACHINE.panel.y + MACHINE.panel.h / 2, MACHINE.front + 0.02), size: [0.54, 0.25] },
+    update(dt, _time, camera) {
       time += dt;
+      capsu.update(dt, camera);
+      if (done && !scanMode && capsu.visible) {
+        capsuNext -= dt;
+        if (capsuNext < 0) {
+          capsuNext = 4 + Math.random() * 3;
+          void (Math.random() < 0.5 ? capsu.wave() : capsu.hop());
+        }
+      }
       sparks.update(dt);
       confetti.update(dt);
       if (jiggle > 0) writePile();
@@ -468,6 +573,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     },
     setScanMode(on) {
       scanMode = on;
+      capsu.visible = done && !on;
       if (on && !done) finish();
     },
     dispose() {
@@ -492,13 +598,14 @@ export const gacha: ProductDef = {
   price: 120,
   badge: 'RARE',
   flavors: GACHA_FLAVORS,
-  shelfSize: [0.24, 0.43],
+  shelfSize: [0.24, 0.44],
   shelfModel(f) {
     const s = 0.205;
     const g = new THREE.Group();
     const m = buildMachine(f, s);
     g.add(m.group);
-    const crank = voxelMesh(crankVoxels(), { scale: CRANK_S * s, anchor: 'center' });
+    const crank = crankModel();
+    crank.scale.setScalar(s);
     crank.position.copy(CRANK_POS).multiplyScalar(s);
     g.add(crank);
     return withMipmaps(g);

@@ -1,6 +1,7 @@
 import { Painter, shade } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
-import { VoxelGrid } from '../../engine/voxel';
+import { buddyPortrait, type BuddySpec, type Pose } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor } from '../types';
 
 export const INK = '#1d1b26';
@@ -14,10 +15,10 @@ export const GACHA_FLAVORS: Flavor[] = [
 ];
 
 export const RED = '#e63946';
-const RED_DARK = '#b3122a';
+export const RED_DARK = '#b3122a';
 const RED_LIGHT = '#ff6b76';
-const SILVER = '#d9dee6';
-const SILVER_DARK = '#9aa1ad';
+export const SILVER = '#d9dee6';
+export const SILVER_DARK = '#9aa1ad';
 const CREAM = '#fff6e6';
 
 export const CAPSULE_COLORS = ['#ff5d8f', '#ffd23f', '#3ddc84', '#4cc9f0', '#b388ff', '#ff9f1c', '#ff6b6b', '#7ae7c7'];
@@ -202,91 +203,73 @@ export function capsuleTopArt(f: Flavor): Painter {
   return p;
 }
 
-/** Label on the machine front: logo, price and the capsule lineup. */
-export function machineLabel(f: Flavor): Painter {
-  const p = new Painter(64, 24);
+// ---------------------------------------------------------------------------------------------
+// The machine (rounded shapes + painted panels), world units
+
+/**
+ * Gacha machine standing on y = 0, body front at z = `front`. Front, bottom to top: the prize chute,
+ * the coin mech with the crank, the prize-card window (where the shop sticker goes) and a white
+ * header band with the logo. The glass dome sits on the body top (`top`).
+ */
+export const MACHINE = {
+  w: 0.92,
+  d: 0.8,
+  front: 0.33,
+  top: 1.31,
+  chute: { y: 0.1, w: 0.56, h: 0.44 },
+  mech: { y: 0.58, w: 0.46, h: 0.26, d: 0.1 },
+  crank: { y: 0.71 },
+  panel: { y: 0.88, w: 0.74, h: 0.28 },
+  band: { y: 1.18, h: 0.09 },
+};
+
+/** A mascot at packaging size: body, face and limbs shrink together (the pixel style stays). */
+function miniSpec(spec: BuddySpec, k: number): BuddySpec {
+  const L = spec.limbs ?? { color: '#58a88f', tip: '#f3d270' };
+  return {
+    ...spec,
+    body: { ...spec.body, w: Math.round(spec.body.w * k), h: Math.round(spec.body.h * k) },
+    eyes: { ...spec.eyes, gap: spec.eyes?.gap !== undefined ? spec.eyes.gap * k : undefined, r: spec.eyes?.r !== undefined ? Math.max(1.5, spec.eyes.r * k) : undefined },
+    mouth: { ...spec.mouth, w: spec.mouth?.w !== undefined ? Math.round(spec.mouth.w * k) : undefined },
+    limbs: { ...L, arm: Math.round((L.arm ?? 13) * k), leg: Math.round((L.leg ?? 9) * k), thick: Math.max(4, Math.round((L.thick ?? 6) * k)) },
+  };
+}
+
+/** Capsu, the capsule buddy, as a flat portrait (`k` = size relative to the full mascot). */
+export function capsuArt(k: number, pose: Pose = {}): Painter {
+  return buddyPortrait(k === 1 ? CAST.capsu : miniSpec(CAST.capsu, k), pose).toPainter();
+}
+
+/** Prize-card window on the machine front (100 px per unit): capsu with the capsule lineup and the price. */
+export function panelArt(f: Flavor): Painter {
+  const w = Math.round(MACHINE.panel.w * 100);
+  const h = Math.round(MACHINE.panel.h * 100);
+  const p = new Painter(w, h);
   p.clear(CREAM);
-  p.rect(0, 0, 64, 1, '#ffffff');
-  p.text('QR', 5, 3, { font: FONT_BIG, bold: true, color: RED, outline: INK, align: 'left' });
-  p.text('GACHA', 22, 4, { font: FONT_TINY, color: INK });
-  p.text('1 PLAY 120 QB', 22, 11, { font: FONT_TINY, color: RED_DARK });
+  p.rect(0, 0, w, 1, '#ffffff');
+  p.strokeRect(0, 0, w, h, INK);
+  p.strokeRect(1, 1, w - 2, h - 2, RED_LIGHT);
+  const capsu = capsuArt(0.5, { armL: 0.5, armR: 2.6 });
+  p.blit(capsu, 4, h - 3 - capsu.h);
   // capsule lineup
   const cols = [f.c.cap, '#ffd23f', '#4cc9f0', '#3ddc84', '#ff5d8f'];
   cols.forEach((c, i) => {
-    const x = 6 + i * 12;
-    p.disc(x, 20, 3.2, INK);
-    p.ellipse(x, 19.5, 2.4, 2.2, c);
-    p.rect(x - 2, 20, 5, 2, '#ffffff');
-    p.px(x - 1, 18, '#ffffff');
+    const x = 36 + i * 8;
+    p.disc(x, 9, 3.4, INK);
+    p.ellipse(x, 8.6, 2.6, 2.4, c);
+    p.rect(x - 2, 9, 5, 2, '#ffffff');
+    p.px(x - 1, 7, '#ffffff');
   });
-  p.text('?', 61, 16, { font: FONT_TINY, color: RED, align: 'right' });
-  p.strokeRect(0, 0, 64, 24, INK);
+  p.text('1 PLAY', 52, 15, { font: FONT_TINY, color: RED_DARK, align: 'center' });
+  p.text('120 QB', 52, 21, { font: FONT_TINY, color: INK, align: 'center' });
   return p;
 }
 
-// ---------------------------------------------------------------------------------------------
-// Voxels
-
-/** Machine base + coin mech + chute (the dome, capsules and crank are separate meshes). */
-export const MACHINE = { sx: 22, sy: 26, sz: 21, scale: 0.045 };
-
-export function machineVoxels(): VoxelGrid {
-  const g = new VoxelGrid(MACHINE.sx, MACHINE.sy, MACHINE.sz);
-  // plinth
-  g.box(0, 0, 0, 21, 1, 18, RED_DARK);
-  g.box(0, 1, 18, 21, 1, 18, shade(RED_DARK, -0.1));
-  // body with rounded vertical edges
-  g.box(1, 2, 0, 20, 24, 17, RED);
-  for (let y = 2; y <= 24; y++) g.set(1, y, 0, null).set(20, y, 0, null).set(1, y, 17, null).set(20, y, 17, null);
-  // white stripe around the sides and back (the label covers the front)
-  g.paint((x, y, z) => (y === 21 && (z < 17 || x < 3 || x > 18) ? '#ffffff' : null));
-  // silver rim the dome sits in
-  g.box(2, 25, 1, 19, 25, 16, SILVER);
-  g.box(4, 25, 3, 17, 25, 14, SILVER_DARK);
-  // chute: a real hollow with dark walls and a silver frame
-  g.box(5, 2, 11, 16, 11, 17, INK);
-  g.box(6, 3, 12, 15, 10, 17, null);
-  g.box(5, 2, 18, 16, 11, 18, SILVER);
-  g.box(6, 3, 18, 15, 10, 18, null);
-  g.box(6, 2, 18, 15, 2, 18, SILVER_DARK);
-  g.box(6, 2, 12, 15, 2, 17, '#2c2838');
-  // coin mech box
-  g.box(6, 13, 18, 15, 19, 20, SILVER);
-  g.box(6, 13, 20, 15, 13, 20, SILVER_DARK);
-  g.box(6, 19, 18, 15, 19, 20, '#eef1f5');
-  g.box(9, 19, 19, 12, 19, 19, INK); // coin slot on top
-  g.box(14, 14, 20, 14, 14, 20, RED_LIGHT); // little return button
-  // side trim
-  g.box(0, 12, 5, 0, 13, 12, SILVER);
-  g.box(21, 12, 5, 21, 13, 12, SILVER);
-  return g;
-}
-
-/** The big turning handle (faces +Z, rotates about Z). */
-export function crankVoxels(): VoxelGrid {
-  const g = new VoxelGrid(13, 13, 4);
-  for (let y = 0; y < 13; y++)
-    for (let x = 0; x < 13; x++) {
-      const d = Math.hypot(x - 6, y - 6);
-      if (d <= 4.6) g.box(x, y, 0, x, y, 1, d > 3.6 ? SILVER_DARK : SILVER);
-    }
-  g.box(1, 5, 2, 11, 7, 3, '#ffffff');
-  g.box(0, 4, 2, 2, 8, 3, '#ffd23f');
-  g.box(10, 4, 2, 12, 8, 3, '#ffd23f');
-  g.set(0, 8, 3, '#fff3b0').set(10, 8, 3, '#fff3b0');
-  g.box(5, 5, 3, 7, 7, 3, '#eef1f5');
-  return g;
-}
-
-export function coinVoxels(): VoxelGrid {
-  const R = 4;
-  const g = new VoxelGrid(R * 2 + 1, R * 2 + 1, 2);
-  for (let y = 0; y <= R * 2; y++)
-    for (let x = 0; x <= R * 2; x++) {
-      const d = Math.hypot(x - R, y - R);
-      if (d <= R + 0.3) g.box(x, y, 0, x, y, 1, d > R - 1 ? '#c8930f' : '#f7c948');
-    }
-  g.box(R - 1, R - 1, 0, R + 1, R + 1, 1, '#ffe88a');
-  g.set(R, R, 0, '#c8930f').set(R, R, 1, '#c8930f');
-  return g;
+/** Logo for the white header band (100 px per unit). */
+export function bandArt(): Painter {
+  const p = new Painter(56, 9);
+  p.text('QR', 2, 1, { font: FONT_BIG, bold: true, color: RED, align: 'left' });
+  p.text('GACHA', 19, 2, { font: FONT_TINY, color: INK });
+  p.star(51, 4.5, 3.6, 1.6, 5, '#ffd23f');
+  return p;
 }
