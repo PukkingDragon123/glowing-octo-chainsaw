@@ -24,10 +24,13 @@ export function buildShell(scene: THREE.Scene) {
   const depth = STORE.frontZ - STORE.backZ;
 
   const floorTex = floorTexture();
-  floorTex.repeat.set(W / 1.6, (depth + 4) / 1.6);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, depth + 4), toon('#ffffff', floorTex));
+  // the floor stops at the front wall: past it the sidewalk sits at the same height and the two
+  // surfaces would flicker against each other
+  const fd = depth + 0.5;
+  floorTex.repeat.set(W / 1.6, fd / 1.6);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, fd), toon('#ffffff', floorTex));
   floor.rotation.x = -Math.PI / 2;
-  floor.position.set(cx, 0, (STORE.frontZ + STORE.backZ) / 2 + 2);
+  floor.position.set(cx, 0, STORE.backZ - 0.5 + fd / 2);
   floor.receiveShadow = true;
   scene.add(floor);
 

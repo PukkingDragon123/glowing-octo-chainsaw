@@ -135,7 +135,7 @@ export function buildFacade(): Facade {
     for (let fx = a + 0.2; fx < b - 0.1; fx += 0.3) k.sphere(0.1, ['#ff8fb1', '#ffd66b', '#ffffff'][Math.round(fx * 7) % 3], fx, 0.62, z + 0.3, 0.8);
   }
   // sidewalk + street
-  k.rbox(w + 16, 0.1, 5, 0.03, '#e9e2d7', cx, -0.1, z + 2.5);
+  k.rbox(w + 16, 0.1, 5, 0.03, '#e9e2d7', cx, -0.115, z + 2.5);
   k.rbox(w + 16, 0.12, 0.3, 0.05, '#cfc6b8', cx, -0.08, z + 5);
   const street = new THREE.Mesh(new THREE.PlaneGeometry(60, 12), new THREE.MeshBasicMaterial({ color: '#6c6a86' }));
   street.rotation.x = -Math.PI / 2;

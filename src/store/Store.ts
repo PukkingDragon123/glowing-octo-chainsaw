@@ -58,7 +58,7 @@ type Pick =
 
 export class Store {
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.05, 140);
+  readonly camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.12, 90);
   readonly items: ShelfItem[] = [];
   readonly stock = new Stock(96);
   readonly clerk: ClerkAPI;
@@ -103,6 +103,8 @@ export class Store {
   private introCam = { pos: new THREE.Vector3(STORE.doorX, 2.2, STORE.frontZ + 10.5), look: new THREE.Vector3(STORE.doorX, 2.6, STORE.frontZ) };
   private tmp = new THREE.Vector3();
   private promoters: { b: Buddy; next: number }[] = [];
+  /** Fixtures that stand out from the shelves (x span, front z, top y): the zoom stops in front of them. */
+  private blockers: { x0: number; x1: number; front: number; top: number }[] = [];
   private street: Shoppers;
   private time = 0;
 
@@ -134,6 +136,16 @@ export class Store {
     this.buildAisles();
     this.tv = tvCabinet(this.scene, 46.4, -1.7);
     this.boothLamp = photoBooth(this.scene, 43.2, -1.6).lamp;
+    this.blockers.push(
+      { x0: -8.3, x1: -3.7, front: 0.6, top: 0.95 }, // checkout counter
+      { x0: -10.7, x1: -9.5, front: -0.3, top: 1.6 }, // gacha machine
+      { x0: -3.2, x1: -2.6, front: 1.2, top: 0.5 }, // basket stack
+      { x0: 17.5, x1: 19.9, front: 1.05, top: 1.0 }, // Captain QR display + promoter
+      { x0: 37.8, x1: 40.8, front: 0.8, top: 0.9 }, // chest freezer
+      { x0: 42.4, x1: 44.0, front: -0.95, top: 2.4 }, // photo booth
+      { x0: 44.2, x1: 45.0, front: -0.5, top: 1.1 }, // postcard pedestal
+      { x0: 45.6, x1: 47.2, front: -0.95, top: 1.6 }, // TV cabinet and tape step
+    );
     this.scene.add(this.stock.build());
 
     this.shoppers = new Shoppers([
@@ -401,7 +413,7 @@ export class Store {
     kit.rbox(1.44, 0.025, 0.74, 0.06, PAL.pinkLight, STORE.doorX, 0, 2.2);
     const decal = spriteMesh(drawLogo(48, { badge: true, round: true }).toCanvas(), { ppu: 48 / 1.1, anchor: [0.5, 0.5] });
     decal.rotation.x = -Math.PI / 2;
-    decal.position.set(STORE.doorX + 2.6, 0.004, 1.2);
+    decal.position.set(STORE.doorX + 2.6, 0.012, 1.2);
     decal.receiveShadow = true;
     this.scene.add(decal);
     // a round window with sky at the far end of the aisle
@@ -535,14 +547,38 @@ export class Store {
     });
   }
 
+  /**
+   * Camera distance from the shelf plane: the zoom curve, held back in front of any fixture that
+   * stands out from the shelves so the camera never ends up inside the counter or photo booth.
+   */
+  private distAt(x: number, zoom: number, lookY: number) {
+    const dist = THREE.MathUtils.lerp(FAR, NEAR, ease.outQuad(zoom));
+    const camY = lookY + THREE.MathUtils.lerp(0.5, 0.06, ease.outQuad(zoom));
+    let need = 0;
+    for (const b of this.blockers) {
+      const gap = Math.max(b.x0 - x, x - b.x1, 0);
+      const wx = 1 - THREE.MathUtils.smoothstep(gap, 0.4, 1.3);
+      const wy = 1 - THREE.MathUtils.smoothstep(camY, b.top + 0.1, b.top + 0.5);
+      need = Math.max(need, (b.front + 0.9 + b.top * 0.45 - SHELF_Z) * wx * wy);
+    }
+    return Math.max(dist, need);
+  }
+
   /** World units per screen pixel at the shelf plane for the target zoom. */
   private unitsPerPixel(cssH: number) {
-    const dist = THREE.MathUtils.lerp(FAR, NEAR, ease.outQuad(this.targetZoom));
+    const dist = this.distAt(this.targetX, this.targetZoom, THREE.MathUtils.lerp(LOOK_Y, this.targetY, this.targetZoom));
     return (2 * dist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2))) / cssH;
   }
 
-  private clampY(y: number) {
-    return THREE.MathUtils.clamp(y, 0.42, 2.0);
+  /** Zoomed look height: not below a fixture's top when one stands in front (you'd stare at its side). */
+  private clampY(y: number, x = this.targetX) {
+    let lo = 0.42;
+    for (const b of this.blockers) {
+      if (b.top > 1.5) continue;
+      const gap = Math.max(b.x0 - x, x - b.x1, 0);
+      lo = Math.max(lo, THREE.MathUtils.lerp(0.42, b.top - 0.1, 1 - THREE.MathUtils.smoothstep(gap, 0.4, 1.3)));
+    }
+    return THREE.MathUtils.clamp(y, lo, 2.0);
   }
 
   /** Zoom toward a screen point (null = centre), keeping that point under the cursor. */
@@ -551,14 +587,14 @@ export class Store {
     const u = clientX === null ? 0 : ((clientX - rect.left) / rect.width) * 2 - 1;
     const v = clientY === null ? 0 : -((clientY - rect.top) / rect.height) * 2 + 1;
     const tanV = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
-    const before = THREE.MathUtils.lerp(FAR, NEAR, ease.outQuad(this.targetZoom));
     const lookBefore = THREE.MathUtils.lerp(LOOK_Y, this.targetY, this.targetZoom);
+    const before = this.distAt(this.targetX, this.targetZoom, lookBefore);
     const wx = this.targetX + u * before * tanV * this.camera.aspect;
     const wy = lookBefore + v * before * tanV;
     const z0 = this.targetZoom;
     this.targetZoom = THREE.MathUtils.clamp(this.targetZoom + delta, 0, 1);
     if (this.targetZoom === z0) return;
-    const after = THREE.MathUtils.lerp(FAR, NEAR, ease.outQuad(this.targetZoom));
+    const after = this.distAt(wx, this.targetZoom, lookBefore);
     this.targetX = THREE.MathUtils.clamp(wx - u * after * tanV * this.camera.aspect, CAMERA_X_MIN, CAMERA_X_MAX);
     if (this.targetZoom > 0.001) {
       // solve lookY = lerp(LOOK_Y, targetY, zoom) so that wy stays under the cursor
@@ -709,8 +745,8 @@ export class Store {
 
   private cameraPose(x: number, zoom: number, y: number) {
     const z = ease.outQuad(zoom);
-    const dist = THREE.MathUtils.lerp(FAR, NEAR, z);
     const lookY = THREE.MathUtils.lerp(LOOK_Y, y, zoom);
+    const dist = this.distAt(x, zoom, lookY);
     const pos = new THREE.Vector3(x, lookY + THREE.MathUtils.lerp(0.5, 0.06, z), SHELF_Z + dist);
     return { pos, look: new THREE.Vector3(x, lookY, SHELF_Z) };
   }
