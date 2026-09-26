@@ -77,7 +77,7 @@ export function pictureCanvas(art: PixelArt | null, frame = 0): HTMLCanvasElemen
 // ---------------------------------------------------------------------------------------------
 // Photo paper
 
-export const DEFAULT_CAPTION = 'Hi from QR Market!';
+export const DEFAULT_CAPTION = 'Hi from Kobini!';
 
 /** Fit a caption into `maxW` pixels (FONT_BIG, mixed case), with a trailing ".." when cut. */
 export function fitCaption(text: string, maxW: number): string {
@@ -122,7 +122,7 @@ export function photoBack(f: Flavor): Painter {
   p.clear('#f0ede6');
   for (let x = 0; x < w; x += 16) p.text('PIXEL FILM', x + 2, 8 + ((x / 16) % 2) * 20, { font: FONT_TINY, color: '#d6d0c2' });
   p.rect(0, h - 10, w, 10, f.c.band);
-  p.text('QR MARKET INSTANT', w / 2, h - 8, { font: FONT_TINY, color: '#ffffff', align: 'center' });
+  p.text('XOLOTL KOBINI INSTANT', w / 2, h - 8, { font: FONT_TINY, color: '#ffffff', align: 'center' });
   return p;
 }
 
