@@ -111,9 +111,9 @@ export class Showcase {
 
     // the clerk floats behind the counter, off to the left of the stage
     this.clerk = makeClerk();
-    this.clerk.root.position.set(-2.35, -1.0, -2.6);
-    this.clerk.root.rotation.y = 0.28;
-    this.clerk.root.scale.setScalar(1.15);
+    this.clerk.root.position.set(0.9, -1.0, -3.7);
+    this.clerk.root.rotation.y = -0.06;
+    this.clerk.root.scale.setScalar(1.25);
     this.scene.add(this.clerk.root);
 
     this.scene.add(this.stage, this.sparkles.group);

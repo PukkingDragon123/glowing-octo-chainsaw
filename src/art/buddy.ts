@@ -631,7 +631,9 @@ export class Buddy extends THREE.Group {
     const body = drawBody(spec);
     const legBmp = drawLimb(spec, 'leg');
     const armBmp = drawLimb(spec, 'arm');
-    this.legLen = (legBmp.h - 5) / ppu;
+    // measure the drawn leg (the bitmap has padding) so feet sit exactly on the floor
+    const legBox = legBmp.opaque().bounds();
+    this.legLen = legBox.h / ppu;
     this.bodyH = body.h / ppu;
     const Z = 0.004;
 
@@ -641,6 +643,7 @@ export class Buddy extends THREE.Group {
       [this.legR, 1],
     ] as [THREE.Group, number][]) {
       const m = spriteMesh(legBmp, { ppu, anchor: [0.5, 1], castShadow: true, doubleSided: true });
+      m.position.y = legBox.y0 / ppu;
       g.add(m);
       g.position.set((side * spec.body.w * 0.2) / ppu, this.legLen, -Z);
       this.add(g);
@@ -863,11 +866,39 @@ export class Buddy extends THREE.Group {
     if (this.topMesh) this.topMesh.rotation.z = Math.sin(t * 3.1) * 0.05 - tilt * 0.5;
     this.scale.x = Math.abs(this.scale.x) * (this.facing < 0 ? -1 : 1);
     if (this.billboard && camera) {
-      const p = new THREE.Vector3();
-      camera.getWorldPosition(p);
-      const me = new THREE.Vector3();
-      this.getWorldPosition(me);
-      this.rotation.y = Math.atan2(p.x - me.x, p.z - me.z) + spinY;
+      camera.getWorldPosition(this.tmpA);
+      this.getWorldPosition(this.tmpB);
+      // world yaw toward the camera, minus the parent's own yaw
+      let parentYaw = 0;
+      if (this.parent) {
+        this.parent.getWorldQuaternion(this.tmpQ);
+        this.tmpE.setFromQuaternion(this.tmpQ, 'YXZ');
+        parentYaw = this.tmpE.y;
+      }
+      this.rotation.y = Math.atan2(this.tmpA.x - this.tmpB.x, this.tmpA.z - this.tmpB.z) - parentYaw + spinY;
     } else this.rotation.y = spinY;
+  }
+
+  private tmpA = new THREE.Vector3();
+  private tmpB = new THREE.Vector3();
+  private tmpQ = new THREE.Quaternion();
+  private tmpE = new THREE.Euler();
+
+  /** Free every texture, material and geometry this buddy made (including unused face frames). */
+  dispose() {
+    const mats = new Set<THREE.Material>([...Object.values(this.eyeMat), ...Object.values(this.mouthMat)]);
+    const geos = new Set<THREE.BufferGeometry>([...Object.values(this.eyeGeo), ...Object.values(this.mouthGeo)]);
+    this.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      geos.add(m.geometry);
+      (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => mats.add(x));
+    });
+    for (const m of mats) {
+      (m as THREE.MeshBasicMaterial).map?.dispose();
+      m.dispose();
+    }
+    for (const g of geos) g.dispose();
+    this.removeFromParent();
   }
 }

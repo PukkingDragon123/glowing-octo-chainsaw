@@ -1,5 +1,5 @@
 import { Painter } from '../../engine/Painter';
-import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
+import { FONT_TINY } from '../../engine/pixelFont';
 import type { QRMatrix } from '../../qr/qr';
 
 export interface PosterQR {
@@ -53,9 +53,9 @@ export function composePoster(art: Painter, scale: number, code: PosterQR, strip
     p.clear('#fbfaf5');
     for (let x = 0; x < art.w; x += 4) p.rect(x, 0, 2, 1, '#c9c4b8');
     // right: stacked store logo
-    const logoW = 26;
-    p.text('QR', art.w - 4, 4, { font: FONT_BIG, color: strip.accent ?? '#ff5d73', align: 'right', bold: true });
-    p.text('MARKET', art.w - 4, 13, { font: FONT_TINY, color: '#3b3024', align: 'right' });
+    const logoW = 32;
+    p.text('XOLOTL', art.w - 4, 5, { font: FONT_TINY, color: '#f47c9f', align: 'right' });
+    p.text('KOBINI', art.w - 4, 13, { font: FONT_TINY, color: '#4f9f86', align: 'right' });
     // left: product + content, truncated to the space left
     const room = art.w - logoW - 8;
     const fit = (t: string) => {
