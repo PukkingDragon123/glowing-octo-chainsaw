@@ -6,7 +6,7 @@ import { pixelTexture } from '../art/pixel';
 import type { PixelArt } from '../qr/pixelCodec';
 import { pixelArtCanvas } from '../qr/pixelCapture';
 import type { LabelAnchor } from '../products/types';
-import type { ContentMode, ContentState } from './content';
+import { defaultContent, type ContentMode, type ContentState } from './content';
 
 /**
  * The link sticker glued on the unopened package: the whole "editor" lives here. A row of mode
@@ -56,6 +56,7 @@ export class Sticker {
   private wobble = 0;
   private peeling = false;
   private art: PixelArt | null = null;
+  private reselect = false;
   constructor(root: HTMLElement, private cb: StickerCallbacks) {
     this.painter = new Painter(this.W, this.H);
     this.texture = pixelTexture(this.painter.canvas);
@@ -74,10 +75,23 @@ export class Sticker {
     this.input.addEventListener('focus', () => {
       this.focused = true;
       this.dirty = true;
+      // clicked straight into the text: select the sample so typing replaces it (re-applied after
+      // the click, which would otherwise drop the caret where the pointer landed)
+      if (this.showingSample()) {
+        this.selectAll();
+        this.reselect = true;
+      }
     });
     this.input.addEventListener('blur', () => {
       this.focused = false;
       this.dirty = true;
+    });
+    for (const ev of ['select', 'keyup']) this.input.addEventListener(ev, () => (this.dirty = true));
+    this.input.addEventListener('pointerup', () => {
+      this.dirty = true;
+      if (!this.reselect) return;
+      this.reselect = false;
+      setTimeout(() => this.selectAll(), 0);
     });
     this.input.addEventListener('keydown', (e) => {
       const multi = this.content.mode === 'text' || this.content.mode === 'wifi' || this.content.mode === 'contact';
@@ -219,8 +233,30 @@ export class Sticker {
   focus() {
     this.input.hidden = false;
     this.input.focus({ preventScroll: true });
-    const n = this.input.value.length;
-    this.input.setSelectionRange(n, n);
+    // the sample text works like a placeholder: it's selected, so the first key replaces it
+    if (this.showingSample()) this.selectAll();
+    else {
+      const n = this.input.value.length;
+      this.input.setSelectionRange(n, n);
+    }
+    this.dirty = true;
+  }
+
+  private selectAll() {
+    this.input.setSelectionRange(0, this.input.value.length);
+    this.dirty = true;
+  }
+
+  /** Still the untouched example for this mode? */
+  private showingSample() {
+    const v = this.input.value;
+    return !!v && !!this.content && v === this.textFor({ ...defaultContent(), mode: this.content.mode });
+  }
+
+  /** Everything selected (typing will replace it). */
+  private allSelected() {
+    const v = this.input.value;
+    return this.focused && v.length > 0 && this.input.selectionStart === 0 && this.input.selectionEnd === v.length;
   }
 
   setMode(mode: ContentMode) {
@@ -283,13 +319,15 @@ export class Sticker {
       this.lastCaret = caretOn;
       this.dirty = false;
     }
-    // project the text region (below the icon row) to CSS pixels
+    // project the text region (below the icon row, left of the pull tab) to CSS pixels, so taps on
+    // the icons and the tab reach the stage instead of the invisible textarea
     const rect = canvas.getBoundingClientRect();
+    const right = 0.5 - (TAB + 4) / this.W;
     const corners = [
       [-0.5, 0.5 - 22 / this.H],
-      [0.5, 0.5 - 22 / this.H],
+      [right, 0.5 - 22 / this.H],
       [-0.5, -0.5],
-      [0.5, -0.5],
+      [right, -0.5],
     ].map(([x, y]) => {
       const v = new THREE.Vector3(x, y, 0);
       this.mesh.localToWorld(v);
@@ -410,17 +448,19 @@ export class Sticker {
         const maxRows = Math.floor((H - y - 6) / rowH);
         const rows = c.mode === 'link' ? out.slice(-maxRows) : out.slice(0, maxRows);
         let lastEnd = { x: x0, y };
+        const selected = this.allSelected();
         rows.forEach((r) => {
           let tx = x0;
           if (r.icon) {
             p.ctx.drawImage(iconBitmap(r.icon).toCanvas(), x0, y - 3);
             tx += 14;
           }
+          if (selected) p.rect(tx - 1, y - 1, measureText(FONT_BIG, r.text) + 2, rowH, '#ffd3e0');
           const w = p.text(r.text, tx, y, { font: FONT_BIG, color: INK });
           lastEnd = { x: tx + w + 1, y };
           y += rowH;
         });
-        if (caret) p.rect(Math.min(BW - 6, lastEnd.x), lastEnd.y - 1, 1, 9, PINK);
+        if (caret && !selected) p.rect(Math.min(BW - 6, lastEnd.x), lastEnd.y - 1, 1, 9, PINK);
       }
     }
     // status badge
