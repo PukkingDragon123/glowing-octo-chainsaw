@@ -155,13 +155,21 @@ export class Showcase {
     const pitch = h.pitch ?? 0.35;
     const vf = THREE.MathUtils.degToRad(this.camera.fov);
     const halfH = Math.atan(Math.tan(vf / 2) * this.camera.aspect);
-    const dist = Math.max(h.distance, 2.2 / Math.tan(halfH));
+    const portrait = this.camera.aspect < 1;
+    // upright phones: a tighter frame, nudged toward where the code lands
+    const target = h.target.clone();
+    if (portrait) {
+      const c = this.item.focusView().center;
+      target.x += (c.x - target.x) * 0.45;
+      target.z += (c.z - target.z) * 0.2;
+    }
+    const dist = Math.max(h.distance, (portrait ? 1.5 : 2.2) / Math.tan(halfH));
     const pos = new THREE.Vector3(
-      h.target.x + Math.sin(yaw) * Math.cos(pitch) * dist,
-      h.target.y + Math.sin(pitch) * dist,
-      h.target.z + Math.cos(yaw) * Math.cos(pitch) * dist,
+      target.x + Math.sin(yaw) * Math.cos(pitch) * dist,
+      target.y + Math.sin(pitch) * dist,
+      target.z + Math.cos(yaw) * Math.cos(pitch) * dist,
     );
-    this.flyTo(pos, h.target.clone(), instant ? 0 : 0.9);
+    this.flyTo(pos, target, instant ? 0 : 0.9);
   }
 
   /** Frame the package front so the sticker is readable. */

@@ -249,7 +249,7 @@ export function sleeveBack(f: Flavor): Painter {
   p.rect(6, 108, 36, 12, '#ffffff');
   p.strokeRect(6, 108, 36, 12, INK);
   for (let x = 8; x < 40; x += 2) p.rect(x, 110, x % 5 === 0 ? 2 : 1, 7, INK);
-  p.text('100g', 66, 107, { font: FONT_BIG, color: f.c.deep, align: 'center' });
+  p.text('100g', 66, 105, { font: FONT_BIG, color: f.c.deep, align: 'center' });
   p.text('BEST BEFORE', 69, 115, { font: FONT_TINY, color: '#8a8175', align: 'center' });
   const small: BuddySpec = { ...CAST.choco, body: { ...CAST.choco.body, w: 22, h: 22 }, limbs: { ...CAST.choco.limbs!, arm: 9, leg: 6, thick: 5 } };
   const choco = chocoPortrait({ armL: 0.5, armR: 2.5, eyes: 'happy', mouth: 'open' }, 'back', small);

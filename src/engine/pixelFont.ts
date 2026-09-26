@@ -11,7 +11,9 @@ export interface Glyph {
 
 export interface BitmapFont {
   name: string;
+  /** Cap height in rows; letters like g and y hang up to `descent` rows below it. */
   height: number;
+  descent: number;
   spacing: number;
   spaceWidth: number;
   glyphs: Map<string, Glyph>;
@@ -51,17 +53,17 @@ const BIG: Record<string, string> = {
   d: '....#/....#/.##.#/#..##/#...#/#...#/.####',
   e: '...../...../.###./#...#/#####/#..../.###.',
   f: '..##/.#../.#../###./.#../.#../.#..',
-  g: '...../.####/#...#/#...#/.####/....#/.###.',
+  g: '...../...../.####/#...#/#...#/#...#/.####/....#/.###.',
   h: '#..../#..../#.##./##..#/#...#/#...#/#...#',
   i: '.#./.../##./.#./.#./.#./###',
-  j: '...#/..../..##/...#/...#/#..#/.##.',
+  j: '...#/..../..##/...#/...#/...#/...#/#..#/.##.',
   k: '#.../#.../#..#/#.#./##../#.#./#..#',
   l: '##./.#./.#./.#./.#./.#./###',
   m: '...../...../##.#./#.#.#/#.#.#/#...#/#...#',
   n: '...../...../#.##./##..#/#...#/#...#/#...#',
   o: '...../...../.###./#...#/#...#/#...#/.###.',
-  p: '...../...../####./#...#/####./#..../#....',
-  q: '...../...../.##.#/#..##/.####/....#/....#',
+  p: '...../...../####./#...#/#...#/#...#/####./#..../#....',
+  q: '...../...../.####/#...#/#...#/#...#/.####/....#/....#',
   r: '...../...../#.##./##..#/#..../#..../#....',
   s: '...../...../.###./#..../.###./....#/####.',
   t: '.#../.#../###./.#../.#../.#.#/..#.',
@@ -69,7 +71,7 @@ const BIG: Record<string, string> = {
   v: '...../...../#...#/#...#/#...#/.#.#./..#..',
   w: '...../...../#...#/#...#/#.#.#/#.#.#/.#.#.',
   x: '...../...../#...#/.#.#./..#../.#.#./#...#',
-  y: '...../...../#...#/#...#/.####/....#/.###.',
+  y: '...../...../#...#/#...#/#...#/#...#/.####/....#/.###.',
   z: '...../...../#####/...#./..#../.#.../#####',
   '0': '.###./#...#/#..##/#.#.#/##..#/#...#/.###.',
   '1': '..#../.##../..#../..#../..#../..#../.###.',
@@ -182,12 +184,12 @@ const TINY: Record<string, string> = {
   '@': '###/#.#/#.#/#../###',
 };
 
-function buildFont(name: string, table: Record<string, string>, height: number, upperOnly: boolean, fixedDigits: boolean): BitmapFont {
+function buildFont(name: string, table: Record<string, string>, height: number, upperOnly: boolean, fixedDigits: boolean, descent = 0): BitmapFont {
   const glyphs = new Map<string, Glyph>();
   for (const [ch, def] of Object.entries(table)) {
     let rows = def.split('/');
     while (rows.length < height) rows.push('.'.repeat(rows[0].length));
-    rows = rows.slice(0, height);
+    rows = rows.slice(0, height + descent);
     const width = Math.max(...rows.map((r) => r.length));
     rows = rows.map((r) => r.padEnd(width, '.'));
     glyphs.set(ch, { w: width, rows });
@@ -204,10 +206,10 @@ function buildFont(name: string, table: Record<string, string>, height: number, 
       }
     }
   }
-  return { name, height, spacing: 1, spaceWidth: height >= 7 ? 3 : 2, glyphs, upperOnly };
+  return { name, height, descent, spacing: 1, spaceWidth: height >= 7 ? 3 : 2, glyphs, upperOnly };
 }
 
-export const FONT_BIG = buildFont('big', BIG, 7, false, true);
+export const FONT_BIG = buildFont('big', BIG, 7, false, true, 2);
 export const FONT_TINY = buildFont('tiny', TINY, 5, true, true);
 
 function glyphFor(font: BitmapFont, ch: string): Glyph | undefined {

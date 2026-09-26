@@ -6,6 +6,11 @@ There is almost no UI. Zoom into the shelves and pick things up yourself, type o
 
 ![The storefront](docs/storefront.png)
 
+| | |
+| --- | --- |
+| ![An aisle with a shopper buddy](docs/aisle.png) | ![The clerk at the counter](docs/counter.png) |
+| ![Typing a link onto the package sticker](docs/sticker.png) | ![Captain QR, opened, with its code](docs/finale.png) |
+
 ## What's inside
 
 - **A walkable 3D store in pixel art.** Rounded pastel fixtures, pendant lamps and bunting, lit by a finer pixel filter with crisp outlines. Nine aisles: checkout, bakery, snacks, candy, cereal, fresh and hot, a glass-door drinks cooler, frozen, and a photo corner.
