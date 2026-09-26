@@ -156,11 +156,12 @@ export function showAd(into: HTMLElement, onDone: () => void) {
       [i * 12 - 10 + ((t * 20) % 24), 68],
       [i * 12 - 16 + ((t * 20) % 24), 68],
     ], '#ffd6e2');
-    p.ctx.drawImage(logo, 8, 8);
-    p.text('XOLOTL', 36, 10, { font: FONT_BIG, color: BRAND.pink, shadow: '#ffffff' });
-    p.text('KOBINI', 36, 20, { font: FONT_BIG, color: '#6fb7a8', shadow: '#ffffff' });
+    // brand stacked on the left, the dancing buddy on the right
+    p.ctx.drawImage(logo, 26 - logo.width / 2, 7);
+    p.text('XOLOTL', 26, 37, { font: FONT_BIG, color: BRAND.pink, shadow: '#ffffff', align: 'center' });
+    p.text('KOBINI', 26, 47, { font: FONT_BIG, color: '#6fb7a8', shadow: '#ffffff', align: 'center' });
     const bob = Math.round(Math.abs(Math.sin(t * 5)) * 5);
-    p.ctx.drawImage(buddy, 120 - buddy.width - 8, 68 - buddy.height - 4 - bob);
+    p.ctx.drawImage(buddy, Math.max(52, 120 - buddy.width - 2), 68 - buddy.height - 2 - bob);
     for (let i = 0; i < 5; i++) {
       const x = (i * 29 + t * 30) % 120;
       const y = 60 - ((t * 25 + i * 17) % 50);
