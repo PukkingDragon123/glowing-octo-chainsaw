@@ -68,6 +68,10 @@ Pixel Postcard links point at the site that made them. The workflow sets `VITE_P
 
 `npm run build:single` bundles everything into one HTML file (`dist-single/index.html`) for embedded previews. Its postcard links come from `.env.single`. When the page runs inside another page, where page-started downloads are blocked, saving uses the host's save prompt if it offers one, or shows the picture to save by hand.
 
+### itch.io
+
+`docs/itch/` has an itch.io kit: `cover.gif` (630×500 animated cover: the storefront with shoppers walking by), `banner.gif` (960×240, five mascots dancing) and `xolotl-kobini-itch.zip` (the single-file build as `index.html`). On itch, create an HTML project, upload the zip, tick "This file will be played in the browser", and set the embed size to something like 960×600 with the fullscreen button on. Rebuild the zip after changes with `npm run build:single` and zip `dist-single/index.html`.
+
 ## Payments, the Member Pass and ads
 
 Everything lives in `src/app/config.ts`:
