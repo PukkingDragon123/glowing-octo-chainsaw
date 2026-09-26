@@ -120,8 +120,16 @@ function showMemberCard(state: GameState, done: () => void, into: HTMLElement) {
     h('div', { class: 'name' }, 'XOLOTL KOBINI', h('br'), 'MEMBER'),
     h('div', { class: 'row' }, h('span', { class: 'until' }, `UNTIL ${until.getDate()}/${until.getMonth() + 1}/${until.getFullYear()}`), iconImg('heart', 2)),
   );
-  into.replaceChildren(card, h('button', { class: 'pill pink', onclick: done }, h('span', { class: 'lead' }, iconImg('check', 2), 'LETS GO')));
-  setTimeout(done, 2600);
+  // continue once: from the button or on its own after a moment
+  let timer = 0;
+  const go = () => {
+    if (!timer) return;
+    clearTimeout(timer);
+    timer = 0;
+    done();
+  };
+  into.replaceChildren(card, h('button', { class: 'pill pink', onclick: go }, h('span', { class: 'lead' }, iconImg('check', 2), 'LETS GO')));
+  timer = window.setTimeout(go, 2600);
 }
 
 /**

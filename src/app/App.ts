@@ -474,9 +474,15 @@ export class App {
       return;
     }
     if (o.userData.clerk || isChildOf(o, this.showcase.clerk.root)) {
+      if (this.showcase.clerk.receipt.visible) {
+        // the clerk is holding out your receipt: tapping them takes it too
+        this.hints.hide('receipt');
+        this.state.markSeen('receipt');
+        void this.save();
+        return;
+      }
       audio.play('ding', { rate: 1.2 });
-      if (this.revealed) this.another();
-      else void this.showcase.clerk.wave();
+      void this.showcase.clerk.wave();
       return;
     }
     // the product itself
@@ -583,15 +589,6 @@ export class App {
     const c = this.product.poster(this.ctx('poster'));
     this.posterTex = pixelTexture(c);
     return this.posterTex;
-  }
-
-  /** "Another one!": a fresh unopened pack with the same sticker text. */
-  another() {
-    audio.play('whoosh');
-    this.setScanMode(false);
-    this.buildItem();
-    this.frameLabel();
-    this.hintNext();
   }
 
   private setScanMode(on: boolean) {
@@ -745,7 +742,8 @@ export class App {
   async save() {
     if (!this.product || !this.owned) return;
     audio.play('register');
-    const name = `xolotl-kobini-${this.product.id}-${slug(this.label)}`;
+    const tag = slug(this.label);
+    const name = ['xolotl-kobini', this.product.id, tag === 'xolotl-kobini' ? '' : tag].filter(Boolean).join('-');
     const canvas = this.product.poster(this.ctx('poster'));
     const file = `${name}.png`;
     await this.saveFile(await canvasToBlob(canvas), file, () => openSaveImage(canvas.toDataURL('image/png'), file, () => copyCanvas(canvas)));
