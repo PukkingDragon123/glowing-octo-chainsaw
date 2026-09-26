@@ -179,8 +179,13 @@ export const CAST: Record<string, BuddySpec> = {
             const edge = m.h * 0.36 + Math.sin(x * 0.9) * 1.6 + (x % 7 === 0 ? 2 : 0);
             if (m.get(x, y) && y < edge && m.get(x, y - 1)) b.set(x, y, icing);
           }
+        // sprinkles scale with the body and stay on the icing
         const sp = ['#ffffff', '#7fd3ff', '#ffe066', '#8be07a'].map(hex);
-        for (let k = 0; k < 9; k++) b.set(8 + ((k * 7) % 26), 5 + ((k * 5) % 7), sp[k % sp.length]);
+        for (let k = 0; k < 9; k++) {
+          const x = Math.round(m.w * (0.2 + (((k * 7) % 26) / 26) * 0.6));
+          const y = Math.round(m.h * (0.12 + (((k * 5) % 7) / 7) * 0.18));
+          if (m.get(x, y) && m.get(x, y - 1) && y < m.h * 0.36) b.set(x, y, sp[k % sp.length]);
+        }
       },
     },
     eyes: { y: 0.5 },

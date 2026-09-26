@@ -1,5 +1,7 @@
 import { Painter, shade, mix } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
+import { buddyPortrait, type BuddySpec, type Pose } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor } from '../types';
 
 export const INK = '#1d1b26';
@@ -17,6 +19,8 @@ export const BOBA_FLAVORS: Flavor[] = [
 
 /** Cup wrap texture. Front of the cup at x = w/4, back at x = 3w/4; y = 0 is the rim. */
 export const CUP_TEX = { w: 176, h: 88 };
+/** Wrap row (px from the rim) the link sticker is centred on, on the front of the cup. */
+export const STICKER_Y = 50;
 
 function seeded(seed: number) {
   let s = seed;
@@ -34,37 +38,39 @@ export function pearlSprite(p: Painter, cx: number, cy: number, r: number, color
   }
 }
 
-/** "Bobo", the tapioca pearl mascot: a glossy brown ball with sparkly eyes. */
-export function drawMascot(target: Painter, cx: number, cy: number, f: Flavor, opts: { wave?: boolean; r?: number } = {}) {
-  const r = opts.r ?? 9;
-  const S = Math.ceil(r * 2 + 12);
-  const L = new Painter(S, S);
-  const c0 = S / 2;
-  const body = f.c.pearl;
-  // little arms
-  L.ellipse(c0 - r + 0.5, c0 + r * 0.35, 2.2, 1.8, body);
-  if (opts.wave) L.ellipse(c0 + r + 0.5, c0 - r * 0.45, 1.9, 2.3, body);
-  else L.ellipse(c0 + r - 0.5, c0 + r * 0.35, 2.2, 1.8, body);
-  L.disc(c0, c0, r, body);
-  L.disc(c0 + 1, c0 + 1, r - 1.5, shade(body, -0.05));
-  // shine
-  L.ellipse(c0 - r * 0.45, c0 - r * 0.55, r * 0.28, r * 0.18, '#ffffff');
-  L.px(c0 - r * 0.72, c0 - r * 0.2, shade(body, 0.35));
-  // eyes: big and sparkly
-  const ex = r * 0.4;
-  const ey = c0 + r * 0.02;
-  for (const sx of [-1, 1]) {
-    L.ellipse(c0 + sx * ex, ey, Math.max(1.6, r * 0.3), Math.max(2, r * 0.36), '#ffffff');
-    L.ellipse(c0 + sx * ex + 0.4, ey + 0.5, Math.max(1, r * 0.19), Math.max(1.4, r * 0.25), INK);
-    L.px(c0 + sx * ex - 0.5, ey - 0.8, '#ffffff');
+const cache = new Map<string, HTMLCanvasElement>();
+/** Pearl, the Boba Bliss tapioca buddy, as a flat portrait (cached). */
+function pearlPortrait(pose: Pose, key: string, spec: BuddySpec = CAST.pearl) {
+  let c = cache.get(key);
+  if (!c) {
+    c = buddyPortrait(spec, pose).toCanvas();
+    cache.set(key, c);
   }
-  // blush + smile
-  L.ellipse(c0 - r * 0.66, c0 + r * 0.32, 1.4, 0.9, '#ff8fa8');
-  L.ellipse(c0 + r * 0.66, c0 + r * 0.32, 1.4, 0.9, '#ff8fa8');
-  const my = Math.round(c0 + r * 0.38);
-  L.px(c0 - 2, my, '#ffc2cf').px(c0 - 1, my + 1, '#ffc2cf').px(c0, my, '#ffc2cf').px(c0 + 1, my + 1, '#ffc2cf').px(c0 + 2, my, '#ffc2cf');
-  L.outline(INK);
-  target.blit(L, cx - c0, cy - c0);
+  return c;
+}
+
+/** Smaller Pearls for the cup wrap and the seal. */
+const PEARL_SMALL: BuddySpec = { ...CAST.pearl, body: { ...CAST.pearl.body, w: 24, h: 24 }, limbs: { ...CAST.pearl.limbs!, arm: 9, leg: 6, thick: 5 } };
+const PEARL_TINY: BuddySpec = { ...CAST.pearl, body: { ...CAST.pearl.body, w: 17, h: 17 }, top: { kind: 'none' }, limbs: { ...CAST.pearl.limbs!, arm: 6, leg: 4, thick: 4 } };
+
+function stamp(p: Painter, c: HTMLCanvasElement, x: number, y: number, flip = false) {
+  p.ctx.save();
+  if (flip) {
+    p.ctx.translate(Math.round(x) + c.width, Math.round(y));
+    p.ctx.scale(-1, 1);
+    p.ctx.drawImage(c, 0, 0);
+  } else p.ctx.drawImage(c, Math.round(x), Math.round(y));
+  p.ctx.restore();
+}
+
+/** Tiny hand-drawn Pearl face (for spots too small for a portrait). */
+function pearlFace(p: Painter, cx: number, cy: number, r: number, f: Flavor) {
+  p.disc(cx, cy, r + 1, INK);
+  p.disc(cx, cy, r, f.c.pearl);
+  p.px(cx - Math.round(r * 0.45), cy - Math.round(r * 0.5), shade(f.c.pearl, 0.35));
+  p.px(cx - 2, cy, INK).px(cx + 2, cy, INK);
+  p.rect(cx - 1, cy + 2, 3, 1, '#fff3d4');
+  p.rect(cx + 1, cy - r - 3, 1, 3, f.c.straw);
 }
 
 function heart(p: Painter, cx: number, cy: number, col: string) {
@@ -166,23 +172,21 @@ export function cupWrap(f: Flavor, withPearls = true): Painter {
     p.px(x, y + 1, mix('#ffffff', c.tea, 0.5));
   }
 
-  // ---------------- front: logo + mascot sticker
+  // ---------------- front: logo, the sticker spot and a Pearl badge
   const fx = w / 4;
-  p.text('BOBA', fx, 17, { font: FONT_BIG, scale: 2, bold: true, color: '#ffffff', outline: INK, shadow: INK, shadowOffset: [0, 2], align: 'center' });
+  p.text('BOBA', fx, 11, { font: FONT_BIG, scale: 2, bold: true, color: '#ffffff', outline: INK, shadow: INK, shadowOffset: [0, 2], align: 'center' });
   const bw = p.textWidth('BLISS', { font: FONT_BIG, bold: true }) + 10;
-  p.roundRect(fx - bw / 2, 34, bw, 10, 3, INK);
-  p.text('BLISS', fx, 35, { font: FONT_BIG, bold: true, color: c.accent, align: 'center' });
-  // sticker badge
-  p.disc(fx, 57, 13, shade(c.teaDark, -0.1));
-  p.disc(fx, 57, 12, '#fffaf2');
-  p.ring(fx, 57, 10.5, mix(c.accent, '#ffffff', 0.55), 1);
-  drawMascot(p, fx, 57, f, { wave: true, r: 8 });
-  heart(p, fx + 11, 46, c.accent);
-  // flavour pill
-  const flav = f.name.toUpperCase();
-  const tw = p.textWidth(flav, { font: FONT_TINY });
-  p.roundRect(fx - tw / 2 - 4, 72, tw + 8, 9, 3, INK);
-  p.text(flav, fx, 74, { font: FONT_TINY, color: '#ffffff', align: 'center' });
+  p.roundRect(fx - bw / 2, 28, bw, 10, 4, INK);
+  p.text('BLISS', fx, 29, { font: FONT_BIG, bold: true, color: c.accent, align: 'center' });
+  // round printed badge with Pearl waving (its straw pokes up behind the sticker)
+  const by = 70;
+  p.disc(fx, by, 20, INK);
+  p.disc(fx, by, 19, '#fffaf2');
+  p.ring(fx, by, 17, mix(c.accent, '#ffffff', 0.5), 1);
+  const pearl = pearlPortrait({ armL: 0.45, armR: 2.45, mouth: 'open', noLegs: true }, 'wrap', PEARL_SMALL);
+  stamp(p, pearl, fx - pearl.width / 2, by + 14 - pearl.height);
+  heart(p, fx + 21, 58, c.accent);
+  heart(p, fx - 22, 82, '#ffffff');
 
   // ---------------- back: order sticker, elephant, barcode
   const bx = (w * 3) / 4;
@@ -231,7 +235,8 @@ export function sealArt(f: Flavor): Painter {
   // centre badge (soft ring: an ink ring around the dark mascot would look like a QR finder)
   p.disc(cc, cc, 12, c.sealInk);
   p.disc(cc, cc, 11, '#fffaf2');
-  drawMascot(p, cc, cc + 1, f, { r: 6 });
+  const pearl = pearlPortrait({ armL: 0.6, armR: 0.6, mouth: 'grin', noLegs: true }, 'seal', PEARL_TINY);
+  stamp(p, pearl, cc - pearl.width / 2, cc + 9 - pearl.height);
   p.text('BOBA', cc, 6, { font: FONT_TINY, color: INK, align: 'center' });
   p.text('SHAKE ME', cc, s - 11, { font: FONT_TINY, color: INK, align: 'center' });
   return p;
@@ -285,7 +290,7 @@ export function jellyGlint(): Painter {
 // -------------------------------------------------------------------------------------------------
 // Poster
 
-export const POSTER = { w: 120, h: 168, qrX: 22, qrY: 46, qrSize: 76 };
+export const POSTER = { w: 120, h: 202, qrX: 22, qrY: 46, qrSize: 76 };
 
 function miniCup(p: Painter, f: Flavor, x: number, y: number) {
   const L = new Painter(34, 56);
@@ -299,7 +304,7 @@ function miniCup(p: Painter, f: Flavor, x: number, y: number) {
   L.poly([[4, 15], [30, 15], [29.5, 21], [4.5, 21]], c.milk);
   for (let i = 0; i < 9; i++) pearlSprite(L, 9 + (i % 5) * 4 + (i > 4 ? 2 : 0), 49 - (i > 4 ? 4 : 0), 1.6, c.pearl);
   L.disc(17, 32, 6, '#fffaf2');
-  drawMascot(L, 17, 32, f, { r: 4.5 });
+  pearlFace(L, 17, 33, 3.5, f);
   L.rect(8, 16, 1, 30, '#ffffff');
   L.outline(INK);
   p.blit(L, x, y);
@@ -331,14 +336,12 @@ export function posterArt(f: Flavor): Painter {
     p.px(i, fy + 1, '#d4a86a');
     p.px(i, fy + fs - 2, '#d4a86a');
   }
-  // cup + mascot + flavour
-  miniCup(p, f, 2, h - 58);
-  drawMascot(p, w - 16, h - 20, f, { wave: true, r: 8 });
-  const flav = f.name.toUpperCase();
-  const tw = p.textWidth(flav, { font: FONT_TINY });
-  p.roundRect(cx - tw / 2 - 5, h - 32, tw + 10, 9, 3, INK);
-  p.text(flav, cx, h - 30, { font: FONT_TINY, color: '#ffffff', align: 'center' });
-  p.text('SHAKE IT TILL', cx + 2, h - 19, { font: FONT_TINY, color: '#ffffff', outline: INK, align: 'center' });
-  p.text('IT SCANS', cx + 2, h - 12, { font: FONT_TINY, color: '#ffffff', outline: INK, align: 'center' });
+  // tagline, then the cup and Pearl cheering
+  p.text('SHAKE IT TILL IT SCANS', cx, fy + fs + 4, { font: FONT_TINY, color: '#ffffff', outline: INK, align: 'center' });
+  miniCup(p, f, 4, h - 58);
+  const pearl = pearlPortrait({ armL: 2.45, armR: 2.45, eyes: 'happy', mouth: 'open' }, 'poster');
+  stamp(p, pearl, w - 6 - pearl.width, h - 2 - pearl.height);
+  heart(p, 50, h - 30, '#ffffff');
+  heart(p, 44, h - 16, c.accent);
   return p;
 }

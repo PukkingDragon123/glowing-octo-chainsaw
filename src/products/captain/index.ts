@@ -1,17 +1,19 @@
 import * as THREE from 'three';
 import { Painter, shade } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
-import { voxelMesh } from '../../engine/voxel';
 import { ease } from '../../engine/tween';
+import { toonGradient } from '../../engine/voxel';
+import { toonMat } from '../../engine/batch';
 import { audio } from '../../engine/audio';
+import { Buddy } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor, ProductContext, ProductDef, ShowcaseItem } from '../types';
-import type { QRMatrix } from '../../qr/qr';
 import { atlasBox } from '../common/box';
-import { layoutModules, orderSpots, qrDecal } from '../common/qrLayout';
+import { layoutModules, orderSpots } from '../common/qrLayout';
 import { PieceSwarm } from '../common/swarm';
 import { Particles, squareBowl, tileTexture } from '../common/props';
 import { composePoster, posterScale } from '../common/poster';
-import { boxBack, boxBottom, boxFront, boxFrontSmall, boxSide, boxSideSmall, boxTop, CAPTAIN_FLAVORS, captainVoxels, FRONT, INK } from './art';
+import { boxBack, boxBottom, boxFront, boxFrontSmall, boxSide, boxSideSmall, boxTop, CAPTAIN_FLAVORS, FRONT, INK } from './art';
 
 const BOX = { w: 1.4, h: 2.0, d: 0.5 };
 
@@ -19,7 +21,7 @@ function solid(w: number, h: number, color: string) {
   return new Painter(w, h).clear(color).canvas;
 }
 
-/** A flat card shaped like the 64×26 speech-bubble art (rounded body + tail), `w`×`h` units, UVs on the art. */
+/** A flat card shaped like the 64×26 speech-bubble art (rounded body + tail on the right), `w`×`h` units, UVs on the art. */
 function bubbleGeometry(w: number, h: number) {
   const TW = 64;
   const TH = 26;
@@ -30,9 +32,9 @@ function bubbleGeometry(w: number, h: number) {
   s.quadraticCurveTo(64, 26, 64, 21);
   s.lineTo(64, 11);
   s.quadraticCurveTo(64, 6, 59, 6);
-  s.lineTo(21, 6);
-  s.lineTo(12, 0);
-  s.lineTo(13.7, 6);
+  s.lineTo(50.3, 6);
+  s.lineTo(52, 0);
+  s.lineTo(43, 6);
   s.lineTo(5, 6);
   s.quadraticCurveTo(0, 6, 0, 11);
   s.lineTo(0, 21);
@@ -49,17 +51,16 @@ function bubbleGeometry(w: number, h: number) {
   return g;
 }
 
-/** The cereal box: atlas-textured body, optional hinged flaps and crisp QR decals. */
-function cerealBox(f: Flavor, scale: number, qr: QRMatrix | null, withFlaps: boolean) {
+/** The cereal box: atlas-textured body and optional hinged flaps. */
+function cerealBox(f: Flavor, scale: number, withFlaps: boolean) {
   const w = BOX.w * scale;
   const h = BOX.h * scale;
   const d = BOX.d * scale;
   const group = new THREE.Group();
   const front = boxFront(f).canvas;
   const side = boxSide(f).canvas;
-  const sideL = boxSide(f, false).canvas;
   const top = withFlaps ? solid(112, 40, '#5a3a22') : boxTop(f).canvas;
-  const body = atlasBox(w, h, d, { px: side, nx: sideL, py: top, ny: boxBottom(f).canvas, pz: front, nz: boxBack(f).canvas });
+  const body = atlasBox(w, h, d, { px: side, nx: side, py: top, ny: boxBottom(f).canvas, pz: front, nz: boxBack(f).canvas });
   body.position.y = h / 2;
   group.add(body);
 
@@ -86,23 +87,9 @@ function cerealBox(f: Flavor, scale: number, qr: QRMatrix | null, withFlaps: boo
     flapBack = makeFlap(half(0), -1);
   }
 
-  if (qr) {
-    const px = w / FRONT.w;
-    const size = FRONT.cardSize * px;
-    const card = qrDecal(qr, size, INK, '#ffffff', 2);
-    card.position.set(-w / 2 + (FRONT.cardX + FRONT.cardSize / 2) * px, h - (FRONT.cardY + FRONT.cardSize / 2) * px, d / 2 + 0.002 * scale);
-    group.add(card);
-    const sidePx = d / 40;
-    const small = qrDecal(qr, 26 * sidePx, INK, '#ffffff', 1);
-    small.rotation.y = Math.PI / 2;
-    small.position.set(w / 2 + 0.002 * scale, h - 140 * sidePx, d / 2 - 20 * sidePx);
-    group.add(small);
-  }
-  return { group, flapFront, flapBack, h, w, d };
-}
-
-function captainMesh(scale = 0.045) {
-  return voxelMesh(captainVoxels(), { scale, anchor: 'bottom-center' });
+  // centre of the white card on the front (where the link sticker goes), in box-group space
+  const card = new THREE.Vector3(-w / 2 + ((FRONT.cardX + FRONT.cardSize / 2) / FRONT.w) * w, h - ((FRONT.cardY + FRONT.cardSize / 2) / FRONT.h) * h, d / 2);
+  return { group, flapFront, flapBack, h, w, d, card };
 }
 
 function createShowcase(ctx: ProductContext): ShowcaseItem {
@@ -110,7 +97,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   const root = new THREE.Group();
 
   // --- box
-  const box = cerealBox(f, 1, qr, true);
+  const box = cerealBox(f, 1, true);
   const pivot = new THREE.Group(); // rotates around the box centre
   const rest = new THREE.Vector3(-1.25, 0, -0.35);
   pivot.position.set(rest.x, BOX.h / 2, rest.z);
@@ -179,14 +166,15 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   const bubbleArt = new Painter(64, 26);
   bubbleArt.roundRect(0, 0, 64, 20, 5, INK);
   bubbleArt.roundRect(1, 1, 62, 18, 4, '#ffffff');
-  bubbleArt.poly([[14, 19], [22, 19], [12, 26]], INK);
-  bubbleArt.poly([[15, 18], [21, 18], [14, 24]], '#ffffff');
+  bubbleArt.poly([[50, 19], [42, 19], [52, 26]], INK);
+  bubbleArt.poly([[49, 18], [43, 18], [50, 24]], '#ffffff');
   bubbleArt.text('SCAN ME,', 32, 3, { font: FONT_TINY, color: INK, align: 'center' });
   bubbleArt.text('MATEY!', 32, 10, { font: FONT_BIG, color: '#e63950', align: 'center' });
   // A camera-facing card cut to the bubble's outline rather than a sprite: it writes depth and
   // normals, so the outline pass sees one flat surface instead of drawing the shelf's edges through it.
   const bubble = new THREE.Mesh(bubbleGeometry(1.1, 0.45), new THREE.MeshBasicMaterial({ map: bubbleArt.texture(), alphaTest: 0.5 }));
-  bubble.position.set(1.62, 1.62, -0.05);
+  const bubbleY = 1.86;
+  bubble.position.set(1.6, bubbleY, -0.38);
   bubble.visible = false;
   const parentQuat = new THREE.Quaternion();
   const camQuat = new THREE.Quaternion();
@@ -197,15 +185,18 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   };
   root.add(bubble);
 
-  // --- mascot pops up at the end
-  const captain = captainMesh();
-  captain.position.set(2.05, -1.6, -0.1);
-  captain.rotation.y = -0.5;
+  // --- Captain QR pops up beside the bowl at the end
+  const captain = new Buddy(CAST.captain, 56);
+  captain.billboard = true;
+  const captainRest = new THREE.Vector3(2.12, 0, -0.42);
+  captain.position.copy(captainRest);
   captain.visible = false;
   root.add(captain);
 
   let done = false;
   let time = 0;
+  let scanning = false;
+  let nextAct = 3;
 
   const setFlaps = (t: number) => {
     if (box.flapFront) box.flapFront.rotation.x = t * 2.0;
@@ -267,21 +258,20 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     audio.play('whoosh');
     const assemblyOrder = orderSpots(spots.map((s, i) => ({ ...s, i })), 'wave').map((s) => s.i);
     await swarm.assemble(assemblyOrder, Math.min(2.4, 1 + order.length / 700), 0.5, 0.18);
-    // captain cheers
-    captain.visible = true;
+    // Captain QR pops up out of the counter and cheers
     audio.play('tada');
     fx.burst(new THREE.Vector3(bowlPos.x, surfaceY + 0.3, bowlPos.z), { count: 40, color: ['#ffd23f', '#ff5d73', '#7ee0ff', '#ffffff'], speed: 2, up: 3, size: 0.045, life: 1.1 });
-    await tweens.tween(0.6, (t) => {
-      captain.position.y = -1.6 + 1.6 * t;
-    }, ease.outBack, tg);
-    await tweens.tween(0.5, (t) => {
-      captain.rotation.y = -0.5 + t * Math.PI * 2;
-      captain.position.y = Math.sin(t * Math.PI) * 0.35;
-    }, ease.inOutCubic, tg);
-    bubble.visible = true;
+    captain.visible = !scanning;
+    await tweens.tween(0.55, (t) => (captain.position.y = -1.4 * (1 - t)), ease.outBack, tg);
+    audio.play('pop');
+    fx.burst(captainRest, { count: 14, color: ['#ffd23f', '#ffffff', f.c.accent], speed: 1.4, up: 2, size: 0.035, life: 0.7 });
+    void captain.cheer();
+    await tweens.wait(0.45, tg);
+    bubble.visible = !scanning;
     audio.play('blip', { rate: 1.4 });
     await tweens.tween(0.35, (t) => bubble.scale.set(t, t, 1), ease.outBack, tg);
     done = true;
+    nextAct = time + 2.5;
   }
 
   function finish() {
@@ -290,10 +280,9 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     pivot.position.set(rest.x, BOX.h / 2, rest.z);
     pivot.rotation.set(0, 0.35, 0);
     swarm.settleAll();
-    captain.visible = true;
-    captain.position.y = 0;
-    captain.rotation.y = -0.5;
-    bubble.visible = true;
+    captain.position.copy(captainRest);
+    captain.visible = !scanning;
+    bubble.visible = !scanning;
     bubble.scale.set(1, 1, 1);
     done = true;
   }
@@ -324,21 +313,58 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     actionLabel: 'Pour it!',
     extra: { label: 'Stir it!', run: stir },
     hero: { target: new THREE.Vector3(0.1, 0.85, 0.1), distance: 5.6, yaw: -0.15, pitch: 0.42 },
-    update(dt) {
+    // the link sticker goes on the white card in the box's pink window
+    label: { object: box.group, position: box.card.clone().setZ(box.card.z + 0.003), size: [0.64, 0.5] },
+    update(dt, _time, camera) {
       time += dt;
       swarm.update(dt);
       fx.update(dt);
-      if (done) captain.position.y = Math.abs(Math.sin(time * 2.2)) * 0.05;
+      captain.update(dt, camera);
+      if (done && time > nextAct) {
+        nextAct = time + 3.5 + Math.random() * 3;
+        const r = Math.random();
+        void (r < 0.4 ? captain.wave() : r < 0.7 ? captain.hop() : captain.nod());
+      }
+      if (bubble.visible) bubble.position.y = bubbleY + Math.sin(time * 2.4) * 0.025;
     },
     focusView: () => ({ center: new THREE.Vector3(bowlPos.x, surfaceY, bowlPos.z), normal: new THREE.Vector3(0, 1, 0), size: inner * 1.02, up: new THREE.Vector3(0, 0, -1) }),
     setScanMode: (on) => {
+      scanning = on;
       swarm.setScanMode(on);
       bubble.visible = !on && done;
+      captain.visible = !on && done;
     },
     dispose() {
       swarm.dispose();
+      disposeTree(root);
     },
   };
+}
+
+/** Free GPU resources this showcase owns (the shared toon material and toon ramp are kept). */
+function disposeTree(root: THREE.Object3D) {
+  const keep = toonMat();
+  const ramp = toonGradient();
+  const seen = new Set<unknown>();
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    if (!seen.has(mesh.geometry)) {
+      seen.add(mesh.geometry);
+      mesh.geometry.dispose();
+    }
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) {
+      if (!m || m === keep || seen.has(m)) continue;
+      seen.add(m);
+      for (const v of Object.values(m)) {
+        if (!(v instanceof THREE.Texture) || v === ramp || seen.has(v)) continue;
+        seen.add(v);
+        v.dispose();
+      }
+      m.dispose();
+    }
+  });
 }
 
 function poster(ctx: ProductContext) {
@@ -370,5 +396,3 @@ export const captainQR: ProductDef = {
   createShowcase,
   poster,
 };
-
-export { captainMesh };

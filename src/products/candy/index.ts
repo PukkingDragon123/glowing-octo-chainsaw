@@ -3,13 +3,15 @@ import { Painter, shade } from '../../engine/Painter';
 import { ease } from '../../engine/tween';
 import { audio } from '../../engine/audio';
 import { toonGradient } from '../../engine/voxel';
+import { toonMat } from '../../engine/batch';
+import { Buddy } from '../../art/buddy';
 import type { Flavor, ProductContext, ProductDef, ShowcaseItem } from '../types';
 import { atlasBox } from '../common/box';
 import { layoutModules, orderSpots } from '../common/qrLayout';
 import { QRSwarm, isStructural } from '../common/swarm';
 import { Particles, tray } from '../common/props';
 import { composePoster, posterScale } from '../common/poster';
-import { CANDY_FLAVORS, CANDY_SETS, crimpStrip, packBack, packFront, packFrontSmall, PACK, INK } from './art';
+import { CANDY_FLAVORS, CANDY_SETS, DROPS, POSTER, crimpStrip, packBack, packFront, packFrontSmall, posterArt, PACK, INK } from './art';
 
 const SIZE = { w: 1.2, h: 1.5, d: 0.36 };
 
@@ -53,7 +55,9 @@ function packModel(f: Flavor, scale: number, small: boolean) {
   };
   const topCrimp = makeCrimp(true);
   makeCrimp(false);
-  return { group, topCrimp, h, w, d };
+  // centre of the candy porthole on the front (where the link sticker goes), in pack-group space
+  const porthole = new THREE.Vector3(-w / 2 + (PACK.winCX / PACK.w) * w, h - (PACK.winCY / PACK.h) * h, d / 2);
+  return { group, topCrimp, h, w, d, porthole };
 }
 
 function candyColors(f: Flavor) {
@@ -145,6 +149,24 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   fx.floorY = floorY;
   root.add(fx.mesh);
 
+  // the Drops gang cheers from behind the tray at the end
+  const gang = [
+    { b: new Buddy(DROPS.pink, 64), at: new THREE.Vector3(trayPos.x + 0.05, 0, trayPos.z - traySize / 2 - 0.42) },
+    { b: new Buddy(DROPS.lemon, 64), at: new THREE.Vector3(trayPos.x - 0.72, 0, trayPos.z - traySize / 2 - 0.34) },
+    { b: new Buddy(DROPS.mint, 64), at: new THREE.Vector3(trayPos.x + 0.8, 0, trayPos.z - traySize / 2 - 0.34) },
+  ];
+  for (const g of gang) {
+    g.b.billboard = true;
+    g.b.visible = false;
+    g.b.position.copy(g.at);
+    root.add(g.b);
+  }
+  let scanning = false;
+  let nextAct = 0;
+  const showGang = (on: boolean) => {
+    for (const g of gang) g.b.visible = on && !scanning;
+  };
+
   let time = 0;
   let idle = true;
   let done = false;
@@ -215,7 +237,19 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     await swarm.assemble(orderIn, Math.min(2.6, 1.2 + order.length / 600), 0.6, 0.22);
     audio.play('tada');
     fx.burst(new THREE.Vector3(trayPos.x, 0.3, trayPos.z), { count: 50, color: set.map((c) => c.fun), speed: 2.4, up: 3.2, size: 0.05, life: 1.2 });
+    // pop, pop, pop: the Drops jump up behind the tray and cheer
+    showGang(true);
+    for (const g of gang) g.b.position.y = -1.2;
+    await Promise.all(
+      gang.map(async (g, k) => {
+        await tweens.wait(k * 0.14, tg);
+        audio.play('pop', { rate: 1 + k * 0.2 });
+        await tweens.tween(0.5, (t) => (g.b.position.y = -1.2 * (1 - t)), ease.outBack, tg);
+        void (k === 0 ? g.b.cheer() : k === 1 ? g.b.hop() : g.b.wave());
+      }),
+    );
     done = true;
+    nextAct = time + 2;
   }
 
   function finish() {
@@ -226,6 +260,8 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     pivot.rotation.set(0, 0.45, -Math.PI / 2);
     pivot.scale.set(1, 1, 1);
     swarm.settleAll();
+    for (const g of gang) g.b.position.copy(g.at);
+    showGang(true);
     done = true;
   }
 
@@ -254,7 +290,9 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     actionLabel: 'Rip it open!',
     extra: { label: 'Shake it!', run: shake },
     hero: { target: new THREE.Vector3(-0.2, 0.75, 0.1), distance: 5.9, yaw: 0.12, pitch: 0.45 },
-    update(dt) {
+    // the link sticker goes over the candy porthole on the pack front
+    label: { object: pack.group, position: pack.porthole.clone().setZ(pack.porthole.z + 0.003), size: [0.6, 0.36] },
+    update(dt, _time, camera) {
       time += dt;
       if (idle) {
         pivot.position.y = rest.y + Math.sin(time * 2) * 0.05;
@@ -262,18 +300,55 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
       }
       swarm.update(dt);
       fx.update(dt);
-      void done;
+      for (const g of gang) g.b.update(dt, camera);
+      if (done && time > nextAct) {
+        nextAct = time + 2.2 + Math.random() * 2.5;
+        const g = gang[Math.floor(Math.random() * gang.length)].b;
+        const r = Math.random();
+        void (r < 0.35 ? g.hop() : r < 0.7 ? g.wave() : g.spin());
+      }
     },
     focusView: () => ({ center: new THREE.Vector3(trayPos.x, floorY, trayPos.z), normal: new THREE.Vector3(0, 1, 0), size: traySize, up: new THREE.Vector3(0, 0, -1) }),
-    setScanMode: (on) => swarm.setScanMode(on),
+    setScanMode: (on) => {
+      scanning = on;
+      swarm.setScanMode(on);
+      showGang(done);
+    },
     dispose() {
       swarm.dispose();
+      disposeTree(root);
     },
   };
 }
 
+/** Free GPU resources this showcase owns (the shared toon material and toon ramp are kept). */
+function disposeTree(root: THREE.Object3D) {
+  const keep = toonMat();
+  const ramp = toonGradient();
+  const seen = new Set<unknown>();
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    if (!seen.has(mesh.geometry)) {
+      seen.add(mesh.geometry);
+      mesh.geometry.dispose();
+    }
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) {
+      if (!m || m === keep || seen.has(m)) continue;
+      seen.add(m);
+      for (const v of Object.values(m)) {
+        if (!(v instanceof THREE.Texture) || v === ramp || seen.has(v)) continue;
+        seen.add(v);
+        v.dispose();
+      }
+      m.dispose();
+    }
+  });
+}
+
 function poster(ctx: ProductContext) {
-  const art = packFront(ctx.flavor, false);
+  const art = posterArt(ctx.flavor);
   const set = candyColors(ctx.flavor);
   const scale = posterScale(art.w);
   let seed = 5;
@@ -283,9 +358,9 @@ function poster(ctx: ProductContext) {
     scale,
     {
       qr: ctx.qr,
-      x: PACK.winX,
-      y: PACK.winY,
-      size: PACK.winSize,
+      x: POSTER.qrX,
+      y: POSTER.qrY,
+      size: POSTER.qrSize,
       dark: INK,
       light: '#fdf6f0',
       quiet: 2,

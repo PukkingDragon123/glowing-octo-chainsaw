@@ -1,6 +1,7 @@
 import { Painter, shade } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
-import { VoxelGrid } from '../../engine/voxel';
+import { buddyPortrait, type BuddySpec, type Pose } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor } from '../types';
 
 export const INK = '#1d1b26';
@@ -16,7 +17,8 @@ export const CRUNCH_FLAVORS: Flavor[] = [
   { id: 'bbq', name: 'Smoky BBQ', c: { main: '#a0522d', bag: '#a0522d', bagDark: '#7a3b1e', accent: '#ffb703', ribbon: '#ffb703', chipA: '#7a3b16', chipB: '#4a2410', scan: '#3b1d08' } },
 ];
 
-export const BAG = { w: 96, h: 128, winX: 18, winY: 42, winSize: 60 };
+/** Bag front size; the link sticker is glued over the chip pile in the middle (texture px). */
+export const BAG = { w: 96, h: 128, pileX: 48, pileY: 66 };
 
 const GOLD = '#f4c542';
 const GOLD_D = '#d9a520';
@@ -30,31 +32,45 @@ export function chipSprite(p: Painter, cx: number, cy: number, rx: number, ry: n
   p.px(cx + rx * 0.3, cy + ry * 0.1, fleck).px(cx - rx * 0.2, cy + ry * 0.3, fleck);
 }
 
-/** Chipper, the mascot: a potato chip in cool sunglasses. */
-function chipper(p: Painter, x: number, y: number) {
-  const L = new Painter(34, 34);
-  L.thickLine(9, 22, 5, 27, 0.8, INK);
-  L.thickLine(25, 22, 30, 17, 0.8, INK);
-  L.disc(4.5, 28, 2.4, '#ffffff');
-  L.disc(30.5, 16, 2.4, '#ffffff');
-  L.thickLine(13, 27, 12, 32, 0.8, INK);
-  L.thickLine(20, 27, 21, 32, 0.8, INK);
-  L.ellipse(11, 32.5, 3, 1.6, '#ff5d73');
-  L.ellipse(22, 32.5, 3, 1.6, '#ff5d73');
-  L.ellipse(17, 17, 11, 12, GOLD);
-  for (let yy = 8; yy < 28; yy += 4) L.rect(8, yy, 18, 1, GOLD_D);
-  L.ellipse(13, 12, 3, 2, '#fff1b8');
-  // sunglasses
-  L.rect(8, 14, 18, 2, INK);
-  L.roundRect(8, 14, 8, 5, 2, INK);
-  L.roundRect(18, 14, 8, 5, 2, INK);
-  L.px(10, 15, '#7ee0ff').px(20, 15, '#7ee0ff');
-  // grin
-  L.rect(13, 22, 8, 1, '#7a1f2b');
-  L.px(12, 21, '#7a1f2b').px(21, 21, '#7a1f2b');
-  L.rect(14, 23, 6, 1, '#ffffff');
-  L.outline(INK);
-  p.blit(L, x, y);
+const cache = new Map<string, HTMLCanvasElement>();
+/** Chipper, the Crunch Bytes buddy, as a flat portrait (cached). */
+function chipperPortrait(pose: Pose, key: string, spec: BuddySpec = CAST.chipper) {
+  let c = cache.get(key);
+  if (!c) {
+    c = buddyPortrait(spec, pose).toCanvas();
+    cache.set(key, c);
+  }
+  return c;
+}
+
+function stamp(p: Painter, c: HTMLCanvasElement, x: number, y: number, flip = false) {
+  p.ctx.save();
+  if (flip) {
+    p.ctx.translate(Math.round(x) + c.width, Math.round(y));
+    p.ctx.scale(-1, 1);
+    p.ctx.drawImage(c, 0, 0);
+  } else p.ctx.drawImage(c, Math.round(x), Math.round(y));
+  p.ctx.restore();
+}
+
+/** A heap of golden chips centred on (cx, cy). */
+function chipPile(p: Painter, f: Flavor, cx: number, cy: number) {
+  const pile: [number, number][] = [
+    [-16, 14], [0, 16], [16, 14], [-22, 6], [-8, 7], [8, 8], [22, 6], [-14, -2], [2, -1], [16, -2], [-6, -9], [9, -10], [1, -17],
+  ];
+  for (const [x, y] of pile) chipSprite(p, cx + x, cy + y, 8, 5, f.c.chipA);
+}
+
+/** Round "NEW" sticker with a scalloped edge. */
+function newSticker(p: Painter, cx: number, cy: number, color: string) {
+  for (const [r, c, d] of [[3, INK, 1], [2, color, 0]] as const) {
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      p.disc(cx + Math.cos(a) * 7, cy + Math.sin(a) * 7, r, c);
+    }
+    p.disc(cx, cy, 7.5 + d, c);
+  }
+  p.text('NEW', cx + 0.5, cy - 2, { font: FONT_TINY, color: '#ffffff', align: 'center' });
 }
 
 function flavorIcon(p: Painter, f: Flavor, x: number, y: number) {
@@ -74,10 +90,15 @@ function flavorIcon(p: Painter, f: Flavor, x: number, y: number) {
   }
 }
 
-/** Bag front. `window` leaves a white plate in the middle for posters. */
-export function bagFront(f: Flavor, window = false): Painter {
-  const { w, h, winX, winY, winSize } = BAG;
-  const p = new Painter(w, h);
+function logo(p: Painter, f: Flavor, cx: number, y: number) {
+  p.burst(cx, y + 12, 30, 18, INK);
+  p.burst(cx, y + 12, 28, 18, f.c.accent);
+  p.text('CRUNCH', cx, y, { font: FONT_BIG, scale: 2, bold: true, color: '#ffffff', outline: INK, shadow: INK, shadowOffset: [0, 2], align: 'center' });
+  p.text('BYTES', cx + 6, y + 17, { font: FONT_BIG, scale: 2, bold: true, color: f.c.bag, outline: '#ffffff', outlineWidth: 1, align: 'center' });
+}
+
+function bagBackground(p: Painter, f: Flavor) {
+  const { w, h } = p;
   p.clear(f.c.bag);
   // metallic sheen
   p.rect(9, 0, 5, h, shade(f.c.bag, 0.12));
@@ -85,37 +106,25 @@ export function bagFront(f: Flavor, window = false): Painter {
   p.rect(w - 12, 0, 3, h, shade(f.c.bag, -0.1));
   p.dither(0, 0, w, 6, shade(f.c.bag, -0.2), 0.5);
   p.dither(0, h - 6, w, 6, shade(f.c.bag, -0.2), 0.5);
-  // burst behind the logo
-  p.burst(w / 2, 20, 30, 18, INK);
-  p.burst(w / 2, 20, 28, 18, f.c.accent);
-  p.text('CRUNCH', w / 2, 8, { font: FONT_BIG, scale: 2, bold: true, color: '#ffffff', outline: INK, shadow: INK, shadowOffset: [0, 2], align: 'center' });
-  p.text('BYTES', w / 2 + 6, 25, { font: FONT_BIG, scale: 2, bold: true, color: f.c.bag, outline: '#ffffff', outlineWidth: 1, align: 'center' });
-  if (window) {
-    p.roundRect(winX - 3, winY - 3, winSize + 6, winSize + 6, 6, INK);
-    p.roundRect(winX - 2, winY - 2, winSize + 4, winSize + 4, 5, '#ffffff');
-  } else {
-    // chip pile + mascot
-    const pile: [number, number][] = [
-      [30, 88], [44, 90], [58, 88], [24, 80], [38, 80], [52, 82], [32, 72], [46, 72], [40, 64],
-    ];
-    for (const [x, y] of pile) chipSprite(p, x, y, 8, 5, f.c.chipA);
-    chipper(p, 56, 50);
-    // flying crumbs
-    chipSprite(p, 18, 56, 5, 3, f.c.chipB);
-    chipSprite(p, 80, 92, 6, 4, f.c.chipA);
-  }
-  // flavour ribbon
-  p.rect(0, 102, w, 13, INK);
-  p.rect(0, 103, w, 11, shade(f.c.bag, -0.35));
-  flavorIcon(p, f, 6, 104);
-  p.text(f.name.toUpperCase(), w / 2 + 6, 105, { font: FONT_BIG, color: f.c.ribbon, align: 'center' });
-  // weight + badges
-  p.roundRect(4, 117, 22, 8, 2, '#ffffff');
-  p.text('75G', 15, 118, { font: FONT_TINY, color: INK, align: 'center' });
-  p.text('8-BIT CRUNCH', 62, 119, { font: FONT_TINY, color: '#ffffff', align: 'center' });
-  p.burst(84, 48, 9, 10, INK);
-  p.burst(84, 48, 8, 10, '#ff5d73');
-  p.text('NEW', 84, 46, { font: FONT_TINY, color: '#ffffff', align: 'center' });
+}
+
+/** Bag front: logo burst, a pile of chips (the sticker spot) and Chipper popping up to wave. */
+export function bagFront(f: Flavor): Painter {
+  const { w, h, pileX, pileY } = BAG;
+  const p = new Painter(w, h);
+  bagBackground(p, f);
+  // a round spotlight behind the pile
+  p.disc(pileX, pileY, 31, shade(f.c.bag, 0.1));
+  p.disc(pileX, pileY, 27, shade(f.c.bag, 0.16));
+  chipPile(p, f, pileX, pileY);
+  chipSprite(p, 14, 52, 5, 3, f.c.chipB);
+  chipSprite(p, 84, 60, 6, 4, f.c.chipA);
+  flavorIcon(p, f, 8, 88);
+  logo(p, f, w / 2, 6);
+  // Chipper pops up at the bottom, waving
+  const chip = chipperPortrait({ armL: 0.5, armR: 2.45, mouth: 'open', noLegs: true }, 'front');
+  stamp(p, chip, w / 2 + 4 - chip.width / 2, h + 1 - chip.height);
+  newSticker(p, 84, 44, '#ff5d73');
   return p;
 }
 
@@ -153,12 +162,14 @@ export function bagFrontSmall(f: Flavor): Painter {
   p.burst(12, 7, 9, 12, f.c.accent);
   p.text('CRUNCH', 12, 1, { font: FONT_TINY, color: INK, align: 'center' });
   p.text('BYTES', 12, 7, { font: FONT_TINY, color: '#ffffff', align: 'center' });
-  for (const [x, y] of [[7, 20], [13, 21], [18, 19], [10, 16], [15, 15]]) {
+  for (const [x, y] of [[7, 18], [13, 19], [18, 17], [10, 14], [15, 13]]) {
     p.ellipse(x, y, 3, 2, GOLD);
     p.px(x - 1, y - 1, '#fff1b8');
   }
-  p.rect(0, 25, 24, 4, INK);
-  p.rect(2, 26, 20, 2, f.c.ribbon);
+  // Chipper's pointy head peeking up
+  p.poly([[12, 21], [18, 31], [6, 31]], INK);
+  p.poly([[12, 23], [16.5, 31], [7.5, 31]], GOLD);
+  p.px(10, 27, INK).px(13, 27, INK).rect(10, 29, 4, 1, '#fff3d4');
   return p;
 }
 
@@ -193,29 +204,22 @@ export function napkin(f: Flavor, px: number, border: number): Painter {
   return p;
 }
 
-/** Chipper as voxels (≈16×22×6). */
-export function chipperVoxels(f: Flavor): VoxelGrid {
-  const g = new VoxelGrid(18, 22, 7);
-  g.ellipsoid(9, 13, 3.5, 7.5, 8.5, 2.4, GOLD);
-  g.paint((_x, y, z) => (y % 3 === 0 && z >= 4 ? GOLD_D : null));
-  g.set(5, 16, 5, f.c.chipA).set(12, 9, 5, f.c.chipA).set(8, 7, 5, f.c.chipA);
-  // sunglasses
-  g.box(3, 14, 5, 15, 15, 6, INK);
-  g.box(4, 13, 6, 7, 15, 6, INK);
-  g.box(11, 13, 6, 14, 15, 6, INK);
-  g.set(5, 14, 6, '#7ee0ff').set(12, 14, 6, '#7ee0ff');
-  // grin
-  g.box(7, 9, 6, 11, 9, 6, '#7a1f2b');
-  g.set(6, 10, 6, '#7a1f2b').set(12, 10, 6, '#7a1f2b');
-  // arms + gloves
-  g.box(1, 10, 3, 2, 10, 3, INK);
-  g.box(0, 11, 2, 1, 13, 4, '#ffffff');
-  g.box(16, 11, 3, 17, 11, 3, INK);
-  g.box(16, 12, 2, 17, 14, 4, '#ffffff');
-  // legs + shoes
-  g.box(7, 2, 3, 7, 4, 3, INK);
-  g.box(11, 2, 3, 11, 4, 3, INK);
-  g.box(5, 0, 2, 8, 1, 5, '#ff5d73');
-  g.box(10, 0, 2, 13, 1, 5, '#ff5d73');
-  return g;
+// -------------------------------------------------------------------------------------------------
+// Poster
+
+export const POSTER = { w: 112, h: 194, qrX: 18, qrY: 46, qrSize: 76 };
+
+export function posterArt(f: Flavor): Painter {
+  const { w, h, qrX, qrY, qrSize } = POSTER;
+  const p = new Painter(w, h);
+  bagBackground(p, f);
+  logo(p, f, w / 2, 6);
+  p.roundRect(qrX - 5, qrY - 5, qrSize + 10, qrSize + 10, 7, INK);
+  p.roundRect(qrX - 4, qrY - 4, qrSize + 8, qrSize + 8, 6, '#ffffff');
+  const pileY = qrY + qrSize + 26;
+  for (const [x, y] of [[-34, 8], [-20, 10], [22, 10], [36, 8], [-28, 2], [30, 2]] as [number, number][]) chipSprite(p, w / 2 + x, pileY + y, 8, 5, f.c.chipA);
+  const chip = chipperPortrait({ armL: 2.45, armR: 2.45, eyes: 'happy', mouth: 'open' }, 'poster');
+  stamp(p, chip, w / 2 - chip.width / 2, h - 12 - chip.height);
+  p.text('CRUNCH ON!', w / 2, h - 9, { font: FONT_TINY, color: '#ffffff', outline: INK, align: 'center' });
+  return p;
 }

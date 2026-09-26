@@ -2,14 +2,17 @@ import * as THREE from 'three';
 import { Painter } from '../../engine/Painter';
 import { ease } from '../../engine/tween';
 import { audio } from '../../engine/audio';
-import { toonGradient, voxelMesh } from '../../engine/voxel';
+import { toonGradient } from '../../engine/voxel';
+import { toonMat } from '../../engine/batch';
+import { Buddy } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor, ProductContext, ProductDef, ShowcaseItem } from '../types';
 import { atlasBox } from '../common/box';
 import { layoutModules, orderSpots } from '../common/qrLayout';
 import { QRSwarm, isStructural } from '../common/swarm';
 import { Particles, tileTexture } from '../common/props';
 import { composePoster, posterScale } from '../common/poster';
-import { BAG, bagBack, bagFront, bagFrontSmall, chipperVoxels, crimp, CRUNCH_FLAVORS, INK, napkin } from './art';
+import { BAG, POSTER, bagBack, bagFront, bagFrontSmall, crimp, CRUNCH_FLAVORS, INK, napkin, posterArt } from './art';
 
 const SIZE = { w: 1.25, h: 1.6, d: 0.44 };
 
@@ -45,7 +48,9 @@ function bagModel(f: Flavor, scale: number, small: boolean) {
     m.castShadow = true;
     group.add(m);
   }
-  return { group, h, w, d, body };
+  // centre of the chip pile on the front (where the link sticker goes), in bag-group space
+  const pile = new THREE.Vector3(-w / 2 + (BAG.pileX / BAG.w) * w, h - (BAG.pileY / BAG.h) * h, d / 2);
+  return { group, h, w, d, body, pile };
 }
 
 /** A ridged saddle-shaped chip (think stackable crisps), unit radius. */
@@ -152,13 +157,15 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   fx.floorY = floorY;
   root.add(fx.mesh);
 
-  // Chipper the mascot
-  const chipperMesh = voxelMesh(chipperVoxels(f), { scale: 0.042, anchor: 'bottom-center' });
-  const chipperHome = new THREE.Vector3(1.95, 0, -0.8);
-  chipperMesh.position.set(chipperHome.x, -1.2, chipperHome.z);
-  chipperMesh.rotation.y = -0.45;
+  // Chipper the mascot pops up behind the napkin at the end
+  const chipperMesh = new Buddy(CAST.chipper, 60);
+  chipperMesh.billboard = true;
+  const chipperHome = new THREE.Vector3(1.5, 0, -1.42);
+  chipperMesh.position.copy(chipperHome);
   chipperMesh.visible = false;
   root.add(chipperMesh);
+  let scanning = false;
+  let nextAct = 0;
 
   let time = 0;
   let idle = true;
@@ -217,16 +224,17 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     audio.play('whoosh');
     const orderIn = orderSpots(spots.map((s, i) => ({ ...s, i })), 'wave').map((s) => s.i);
     await swarm.assemble(orderIn, Math.min(2.4, 1.1 + order.length / 700), 0.55, 0.3);
-    // Chipper jumps up to take a bow
-    chipperMesh.visible = true;
+    // Chipper pops up beside the code and cheers
+    chipperMesh.visible = !scanning;
     audio.play('tada');
     fx.burst(new THREE.Vector3(napPos.x, 0.3, napPos.z), { count: 40, color: ['#f4c542', '#d9a520', f.c.accent, '#ffffff'], speed: 2.2, up: 3, size: 0.045, life: 1.1 });
-    await tweens.tween(0.6, (t) => (chipperMesh.position.y = -1.2 + 1.2 * t), ease.outBack, tg);
-    await tweens.tween(0.5, (t) => {
-      chipperMesh.rotation.y = -0.45 + t * Math.PI * 2;
-      chipperMesh.position.y = Math.sin(t * Math.PI) * 0.35;
-    }, ease.inOutCubic, tg);
+    await tweens.tween(0.55, (t) => (chipperMesh.position.y = chipperHome.y - 1.3 * (1 - t)), ease.outBack, tg);
+    audio.play('crunch');
+    fx.burst(chipperHome, { count: 12, color: ['#f4c542', '#fff1b8', '#ffffff'], speed: 1.3, up: 1.8, size: 0.035, life: 0.6 });
+    void chipperMesh.cheer();
+    await tweens.wait(0.6, tg);
     done = true;
+    nextAct = time + 2.5;
   }
 
   function finish() {
@@ -235,9 +243,8 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     bag.group.visible = false;
     torn.visible = true;
     swarm.settleAll();
-    chipperMesh.visible = true;
-    chipperMesh.position.set(chipperHome.x, 0, chipperHome.z);
-    chipperMesh.rotation.y = -0.45;
+    chipperMesh.visible = !scanning;
+    chipperMesh.position.copy(chipperHome);
     done = true;
   }
 
@@ -261,35 +268,73 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     actionLabel: 'Pop the bag!',
     extra: { label: 'Toss them!', run: toss },
     hero: { target: new THREE.Vector3(-0.2, 0.75, 0.15), distance: 6, yaw: 0.1, pitch: 0.45 },
-    update(dt) {
+    // the link sticker goes over the chip pile in the middle of the bag
+    label: { object: bag.group, position: bag.pile.clone().setZ(bag.pile.z + 0.003), size: [0.6, 0.38] },
+    update(dt, _time, camera) {
       time += dt;
       if (idle) {
         pivot.position.y = rest.y + Math.sin(time * 1.8) * 0.05;
         pivot.rotation.z = Math.sin(time * 1.2) * 0.04;
       }
-      if (done && chipperMesh.visible) chipperMesh.position.y = Math.abs(Math.sin(time * 2.4)) * 0.05;
+      chipperMesh.update(dt, camera);
+      if (done && time > nextAct) {
+        nextAct = time + 3 + Math.random() * 3;
+        const r = Math.random();
+        void (r < 0.4 ? chipperMesh.wave() : r < 0.75 ? chipperMesh.hop() : chipperMesh.nod());
+      }
       swarm.update(dt);
       fx.update(dt);
     },
     focusView: () => ({ center: new THREE.Vector3(napPos.x, floorY, napPos.z), normal: new THREE.Vector3(0, 1, 0), size: inner, up: new THREE.Vector3(0, 0, -1) }),
-    setScanMode: (on) => swarm.setScanMode(on),
+    setScanMode: (on) => {
+      scanning = on;
+      swarm.setScanMode(on);
+      chipperMesh.visible = !on && done;
+    },
     dispose() {
       swarm.dispose();
+      disposeTree(root);
     },
   };
 }
 
+/** Free GPU resources this showcase owns (the shared toon material and toon ramp are kept). */
+function disposeTree(root: THREE.Object3D) {
+  const keep = toonMat();
+  const ramp = toonGradient();
+  const seen = new Set<unknown>();
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    if (!seen.has(mesh.geometry)) {
+      seen.add(mesh.geometry);
+      mesh.geometry.dispose();
+    }
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) {
+      if (!m || m === keep || seen.has(m)) continue;
+      seen.add(m);
+      for (const v of Object.values(m)) {
+        if (!(v instanceof THREE.Texture) || v === ramp || seen.has(v)) continue;
+        seen.add(v);
+        v.dispose();
+      }
+      m.dispose();
+    }
+  });
+}
+
 function poster(ctx: ProductContext) {
   const f = ctx.flavor;
-  const art = bagFront(f, true);
+  const art = posterArt(f);
   return composePoster(
     art,
     posterScale(art.w),
     {
       qr: ctx.qr,
-      x: BAG.winX,
-      y: BAG.winY,
-      size: BAG.winSize,
+      x: POSTER.qrX,
+      y: POSTER.qrY,
+      size: POSTER.qrSize,
       dark: INK,
       light: '#ffffff',
       quiet: 2,

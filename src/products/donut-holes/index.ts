@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { Painter, shade } from '../../engine/Painter';
 import { ease } from '../../engine/tween';
 import { audio } from '../../engine/audio';
-import { toonGradient, voxelMaterial, voxelMesh } from '../../engine/voxel';
+import { toonGradient } from '../../engine/voxel';
+import { Buddy } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import { toonMat } from '../../engine/batch';
 import { LAYER_NO_OUTLINE } from '../../engine/PixelRenderer';
 import type { Flavor, ProductContext, ProductDef, ShowcaseItem } from '../types';
@@ -25,7 +27,6 @@ import {
   boxSideRight,
   brownieTexture,
   cellophane,
-  donutVoxels,
   glazeTexture,
   lidLip,
   lidTop,
@@ -235,11 +236,13 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   // launch order: top of the pile first
   const launchOrder = pileOrder.slice().reverse();
 
-  // --- mascot
-  const mascot = voxelMesh(donutVoxels(f), { scale: 0.024, anchor: 'bottom-center' });
+  // --- Dough-R, the mascot, jumps out of the box at the end
+  const mascot = new Buddy(CAST.donut, 80);
+  mascot.billboard = true;
   const mascotRest = new THREE.Vector3(-0.62, 0, -1.22);
   mascot.visible = false;
   root.add(mascot);
+  let nextAct = 0;
 
   const fx = new Particles(360);
   fx.floorY = paperTop;
@@ -263,6 +266,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   let idle = true;
   let done = false;
   let run = 0;
+  let scanOn = false;
   const setLid = (a: number) => (box.lid.rotation.x = -a);
 
   function setStart() {
@@ -277,9 +281,8 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     box.group.position.copy(boxPos);
     box.body.scale.set(1, 1, 1);
     swarm.settleAll();
-    mascot.visible = true;
+    mascot.visible = !scanOn;
     mascot.position.copy(mascotRest);
-    mascot.rotation.set(0, -0.15, 0);
   }
   setStart();
 
@@ -355,18 +358,24 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     if (!alive()) return;
     audio.play('tada');
     fx.burst(new THREE.Vector3(paperPos.x, 0.35, paperPos.z), { count: 60, color: sprinkles, speed: 2.6, up: 3.2, size: 0.03, life: 1.2 });
-    // Dough-R jumps out of the box
-    mascot.visible = true;
-    const from = new THREE.Vector3(boxPos.x, FLOOR - 0.5, boxPos.z);
+    // Dough-R jumps out of the box, spins, lands beside the code and cheers
+    mascot.visible = !scanOn;
+    const from = new THREE.Vector3(boxPos.x, FLOOR - 0.8, boxPos.z);
+    audio.play('whoosh');
+    void mascot.spin();
     await tweens.tween(0.8, (t) => {
       mascot.position.lerpVectors(from, mascotRest, t);
-      mascot.position.y = from.y + (mascotRest.y - from.y) * t + Math.sin(Math.PI * t) * 1.1;
-      mascot.rotation.set(0, -0.15 + (1 - t) * Math.PI * 2, 0);
+      mascot.position.y = from.y + (mascotRest.y - from.y) * t + Math.sin(Math.PI * t) * 1.2;
     }, ease.linear, tg);
     audio.play('clack');
-    await tweens.tween(0.35, (t) => mascot.scale.set(1 + Math.sin(Math.PI * t) * 0.12, 1 - Math.sin(Math.PI * t) * 0.18, 1 + Math.sin(Math.PI * t) * 0.12), ease.linear, tg);
+    fx.burst(mascotRest, { count: 12, color: sprinkles, speed: 1.2, up: 1.6, size: 0.03, life: 0.6 });
+    void mascot.boop();
+    await tweens.wait(0.35, tg);
+    void mascot.cheer();
+    await tweens.wait(0.5, tg);
     if (!alive()) return;
     done = true;
+    nextAct = time + 2.5;
   }
 
   function finish() {
@@ -374,19 +383,28 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     tweens.cancel(tg);
     idle = false;
     box.group.rotation.z = 0;
-    mascot.scale.set(1, 1, 1);
     setFinal();
     done = true;
   }
 
-  let scanOn = false;
   return {
     root,
     reveal,
     finish,
     actionLabel: 'Flip the lid!',
     hero: { target: new THREE.Vector3(0.12, 0.34, 0.22), distance: 5.4, yaw: 0.1, pitch: 0.62 },
-    update(dt) {
+    // the link sticker seals the cellophane window on the lid (lid-local; the lid top faces +Y)
+    label: {
+      object: box.lid,
+      position: new THREE.Vector3(
+        -(BW + 0.03) / 2 + ((WINDOW.x + WINDOW.w / 2) / BOX_PX.w) * (BW + 0.03),
+        T + 0.003,
+        -0.015 + ((WINDOW.y + WINDOW.h / 2) / BOX_PX.d) * (BD + 0.03),
+      ),
+      rotation: new THREE.Euler(-Math.PI / 2, 0, 0),
+      size: [0.66, 0.4],
+    },
+    update(dt, _time, camera) {
       time += dt;
       if (idle) {
         // the holes are restless: the lid hops every so often
@@ -396,9 +414,11 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
       }
       swarm.update(dt);
       fx.update(dt);
-      if (done) {
-        mascot.position.y = Math.abs(Math.sin(time * 3)) * 0.07;
-        mascot.rotation.z = Math.sin(time * 3) * 0.08;
+      mascot.update(dt, camera);
+      if (done && time > nextAct) {
+        nextAct = time + 3 + Math.random() * 3;
+        const r = Math.random();
+        void (r < 0.4 ? mascot.wave() : r < 0.75 ? mascot.hop() : mascot.spin());
       }
     },
     focusView: () => ({ center: new THREE.Vector3(paperPos.x, paperTop, paperPos.z), normal: new THREE.Vector3(0, 1, 0), size: QS, up: new THREE.Vector3(0, 0, -1) }),
@@ -412,6 +432,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
       // shadows would grey out the light modules (and the finder rings) next to each piece
       for (const mesh of swarm.meshes) mesh.castShadow = !on;
       swarm.setScanMode(on);
+      mascot.visible = !on && done;
     },
     dispose() {
       swarm.dispose();
@@ -421,9 +442,9 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   };
 }
 
-/** Free GPU resources this showcase owns (the shared toon/voxel materials and toon ramp are kept). */
+/** Free GPU resources this showcase owns (the shared toon material and toon ramp are kept). */
 function disposeTree(root: THREE.Object3D) {
-  const keep = new Set<THREE.Material>([toonMat(), voxelMaterial()]);
+  const keep = new Set<THREE.Material>([toonMat()]);
   const ramp = toonGradient();
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
