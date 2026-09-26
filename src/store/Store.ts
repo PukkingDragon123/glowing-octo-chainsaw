@@ -6,6 +6,7 @@ import type { ProductDef } from '../products/types';
 import { makeClerk, type ClerkAPI } from '../app/clerkApi';
 import { spriteMesh } from '../art/spriteMesh';
 import { iconBitmap } from '../art/icons';
+import { cactusSprite, plantSprite } from '../art/decor';
 import { Kit, PAL } from './kit';
 import { Stock } from './stock';
 import { Shoppers } from './npcs';
@@ -27,6 +28,7 @@ import {
 import { CAMERA_X_MAX, CAMERA_X_MIN, SECTIONS, STORE, sectionAt, type SectionInfo } from './layout';
 import type { Aisle } from '../art/foods';
 import { Particles } from '../products/common/props';
+import { Sparkles } from '../art/sparkles';
 
 export interface ShelfItem {
   product: ProductDef;
@@ -36,6 +38,8 @@ export interface ShelfItem {
   hover: number;
   wobble: number;
   lock: THREE.Object3D | null;
+  /** 0..1 while the "picked!" pop plays. */
+  pop?: number;
 }
 
 const SHELF_Z = STORE.shelfFrontZ;
@@ -57,6 +61,9 @@ export class Store {
   readonly clerk: ClerkAPI;
   readonly shoppers: Shoppers;
   readonly fx = new Particles(400);
+  readonly sparkles = new Sparkles();
+  /** Low-res render height in px (for sprite particle sizes). */
+  renderH = 400;
   camX = -5.6;
   targetX = -5.6;
   camY = LOOK_Y;
@@ -93,6 +100,8 @@ export class Store {
   private introCam = { pos: new THREE.Vector3(STORE.doorX, 2.2, STORE.frontZ + 10.5), look: new THREE.Vector3(STORE.doorX, 2.6, STORE.frontZ) };
   private tmp = new THREE.Vector3();
   private promoters: { b: import('../art/buddy').Buddy; next: number }[] = [];
+  private street: Shoppers;
+  private time = 0;
 
   constructor(private canvas: HTMLCanvasElement, private tweens: Tweens) {
     this.scene.background = new THREE.Color('#f3e4cf');
@@ -134,10 +143,17 @@ export class Store {
       { id: 'pudding', x: 44.6, range: 1.8 },
     ]);
     this.scene.add(this.shoppers.group);
-    this.scene.add(this.fx.mesh);
+    this.scene.add(this.fx.mesh, this.sparkles.group);
 
     this.facade = buildFacade();
     this.scene.add(this.facade.group);
+    // shoppers strolling past the store on the sidewalk (seen from the street)
+    this.street = new Shoppers([
+      { id: 'berry', x: STORE.doorX - 3, range: 3.5, z: STORE.frontZ + 1.9 },
+      { id: 'bao', x: STORE.doorX + 3.5, range: 3, z: STORE.frontZ + 2.4 },
+      { id: 'milko', x: STORE.doorX + 6.2, range: 0.2, z: STORE.frontZ + 1.75 },
+    ]);
+    this.scene.add(this.street.group);
     this.bindInput();
     this.updateCamera(0);
   }
@@ -187,17 +203,22 @@ export class Store {
     const w = p.shelfSize[0] * scale + 0.03;
     const n = Math.max(1, Math.floor((x1 - x0) / w));
     const pad = (x1 - x0 - n * w) / 2;
-    for (let i = 0; i < n; i++) this.addItem(p, x0 + pad + w * (i + 0.5), y, z - 0.02, scale);
-    this.lockTag(p, (x0 + x1) / 2, y - 0.075, STORE.shelfFrontZ + 0.03);
+    const made: ShelfItem[] = [];
+    for (let i = 0; i < n; i++) made.push(this.addItem(p, x0 + pad + w * (i + 0.5), y, z - 0.02, scale));
+    this.lockOn(made);
   }
 
-  private lockTag(p: ProductDef, x: number, y: number, z: number) {
-    if (p.price <= 0) return;
-    const tag = spriteMesh(iconBitmap('lock'), { ppu: 90, anchor: [0.5, 1], doubleSided: true });
-    tag.position.set(x, y, z);
-    tag.userData.product = p.id;
-    this.scene.add(tag);
-    for (const it of this.items) if (it.product === p && !it.lock) it.lock = tag;
+  /** A little padlock badge on the front of the middle item of a group (locked packs only). */
+  private lockOn(group: ShelfItem[]) {
+    const it = group[Math.floor(group.length / 2)];
+    if (!it || it.product.price <= 0) return;
+    const tag = spriteMesh(iconBitmap('lock'), { ppu: 80 * it.group.scale.x, anchor: [0.5, 0], doubleSided: true });
+    it.group.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(it.hit);
+    const local = it.group.worldToLocal(new THREE.Vector3(box.max.x - 0.06, box.min.y + 0.03, box.max.z + 0.01));
+    tag.position.copy(local);
+    it.group.add(tag);
+    for (const g of group) g.lock = tag;
   }
 
   /** Food on a shelf run, skipping reserved x-ranges per level. */
@@ -248,21 +269,17 @@ export class Store {
     this.fillRun(wl, ['candy', 'snacks'], [], 3);
     const wr = gondola(kit, this.scene, -4.0, -2.6, PAL.pink, {});
     this.fillRun(wr, ['candy', 'snacks'], [], 4);
-    this.addItem(productById('gacha')!, -10.1, 0, -0.9, 2.3);
-    this.lockTag(productById('gacha')!, -10.1, 0.3, -0.35);
-    this.addItem(productById('lucky-scratch')!, -4.7, counter.top, 0.35, 0.95, -0.2);
-    this.addItem(productById('lucky-scratch')!, -4.3, counter.top, 0.4, 0.95, 0.15);
-    this.lockTag(productById('lucky-scratch')!, -4.5, counter.top - 0.02, counter.front + 0.01);
+    this.lockOn([this.addItem(productById('gacha')!, -10.1, 0, -0.9, 2.3)]);
+    this.lockOn([this.addItem(productById('lucky-scratch')!, -4.7, counter.top, 0.35, 0.95, -0.2), this.addItem(productById('lucky-scratch')!, -4.3, counter.top, 0.4, 0.95, 0.15)]);
     // golden ticket under a little glass dome
     const gold = productById('golden-ticket')!;
-    this.addItem(gold, -7.7, counter.top + 0.02, 0.3, 0.8);
+    this.lockOn([this.addItem(gold, -7.7, counter.top + 0.02, 0.3, 0.8)]);
     kit.cyl(0.26, 0.28, 0.04, PAL.woodDark, -7.7, counter.top, 0.3, 20);
     const dome = new THREE.Mesh(new THREE.SphereGeometry(0.27, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#fff8d6', transparent: true, opacity: 0.2, depthWrite: false }));
     dome.scale.y = 1.9;
     dome.position.set(-7.7, counter.top + 0.04, 0.3);
     dome.layers.set(1);
     this.scene.add(dome);
-    this.lockTag(gold, -7.7, counter.top - 0.02, counter.front + 0.01);
     // basket stack by the door
     for (let i = 0; i < 4; i++) kit.rbox(0.5, 0.26, 0.36, 0.06, PAL.pink, -2.9, i * 0.12, 1.0, 0.1);
 
@@ -315,8 +332,7 @@ export class Store {
     this.fillRun(ch, ['fresh', 'meals'], [{ level: 1, x0: 22.8, x1: 25.0 }], 10);
     coffeeBar(this.scene, 27.3, -1.75, 2.6);
     const latte = productById('latte-art')!;
-    for (let i = 0; i < 2; i++) this.addItem(latte, 27.4 + i * 0.62, 0.96, -1.62, 0.9);
-    this.lockTag(latte, 27.7, 0.93, -1.42);
+    this.lockOn([0, 1].map((i) => this.addItem(latte, 27.4 + i * 0.62, 0.96, -1.62, 0.9)));
 
     // ---- drinks cooler
     const co = cooler(this.scene, 29.0, 36.6);
@@ -342,16 +358,36 @@ export class Store {
     this.fillRun(fz, ['frozen'], [], 12);
     const chest = chestFreezer(this.scene, 39.3, 0.35, 3.0);
     const frosty = productById('frosty-cubes')!;
-    for (let i = 0; i < 5; i++) this.addItem(frosty, chest.inner.x0 + 0.3 + i * 0.5, chest.top, 0.35, 0.9);
-    this.lockTag(frosty, 39.3, 0.7, 0.35 + 0.46);
+    this.lockOn([0, 1, 2, 3, 4].map((i) => this.addItem(frosty, chest.inner.x0 + 0.3 + i * 0.5, chest.top, 0.35, 0.9)));
 
     // ---- photo corner (booth + TV added in the constructor)
     const pc = productById('pixel-postcard')!;
     kit.rbox(0.7, 0.9, 0.5, 0.08, PAL.lilac, 44.6, 0, -0.8);
-    this.addItem(pc, 44.6, 0.9, -0.8, 0.9);
+    this.lockOn([this.addItem(pc, 44.6, 0.9, -0.8, 0.9)]);
     const ft = productById('flipbook-tape')!;
-    for (let i = 0; i < 3; i++) this.addItem(ft, 45.8 + i * 0.32, 0.7, -1.5, 0.85);
-    this.lockTag(pc, 44.6, 0.86, -0.54);
+    this.lockOn([0, 1, 2].map((i) => this.addItem(ft, 45.8 + i * 0.32, 0.7, -1.5, 0.85)));
+
+    // plants: sprite pots on the floor and little cacti on shelf tops
+    const plant = plantSprite(2);
+    for (const [x, z] of [
+      [-10.6, -1.5],
+      [-2.45, -1.2],
+      [4.2, -1.3],
+      [21.8, -1.3],
+      [28.9, -1.4],
+      [41.8, -1.3],
+      [48.2, -1.5],
+    ] as [number, number][]) {
+      const m = spriteMesh(plant, { ppu: 44, anchor: [0.5, 0], castShadow: true, doubleSided: true });
+      m.position.set(x, 0, z);
+      this.scene.add(m);
+    }
+    const cactus = cactusSprite(4);
+    for (const x of [0.3, 6.0, 13.2, 17.5, 38.5]) {
+      const m = spriteMesh(cactus, { ppu: 64, anchor: [0.5, 0], castShadow: true, doubleSided: true });
+      m.position.set(x, 2.12, STORE.shelfFrontZ - 0.25);
+      this.scene.add(m);
+    }
 
     // hanging icon signs
     for (const s of SECTIONS) {
@@ -539,12 +575,13 @@ export class Store {
       this.setHover(null);
       audio.play('select');
       this.sparkle(p.point, ['#ffffff', '#ffd66b', PAL.pink]);
+      p.item.pop = 0.0001;
       this.onPick(p.item);
       return;
     }
     if (p?.kind === 'food') {
       this.stock.boop(p.mesh, p.index);
-      audio.play('pop', { rate: 1.2 + Math.random() * 0.5 });
+      audio.play('boop', { rate: 0.9 + Math.random() * 0.4 });
       this.hearts(this.stock.positionOf(p.mesh, p.index, this.tmp).clone().add(new THREE.Vector3(0, 0.3, 0.05)));
       return;
     }
@@ -552,13 +589,13 @@ export class Store {
       const b = p.object.userData.buddy;
       this.shoppers.poke(b);
       if (this.promoters.some((q) => q.b === b)) void b.boop();
-      audio.play('blip', { rate: 1.8 });
-      audio.play('pop', { rate: 0.9 });
+      audio.play('boop', { rate: 1.3 });
       this.hearts(p.point.clone().add(new THREE.Vector3(0, 0.25, 0.1)));
       return;
     }
     if (p?.kind === 'clerk') {
-      audio.play('ding', { rate: 1.2 });
+      audio.play('bubble');
+      audio.play('mech', { rate: 1.2 });
       void this.clerk.wave();
       this.bubbles(p.point);
       return;
@@ -576,15 +613,16 @@ export class Store {
   // Cute effects
 
   sparkle(at: THREE.Vector3, colors: string[]) {
-    this.fx.burst(at, { count: 14, color: colors, speed: 1.4, up: 1.6, size: 0.035, life: 0.6, gravity: -2 });
+    this.fx.burst(at, { count: 10, color: colors, speed: 1.4, up: 1.6, size: 0.03, life: 0.5, gravity: 3 });
+    this.sparkles.burst('sparkle', at, { count: 5, speed: 0.9, up: 1.1, size: 0.13, life: 0.8, gravity: 1.2 });
   }
 
   hearts(at: THREE.Vector3) {
-    this.fx.burst(at, { count: 6, color: [PAL.pink, '#ff9ab8', '#ffffff'], speed: 0.5, up: 1.3, size: 0.045, life: 0.9, gravity: -0.6 });
+    this.sparkles.burst('heart', at, { count: 3, speed: 0.35, up: 0.7, size: 0.12, life: 1.1, gravity: -0.3 });
   }
 
   bubbles(at: THREE.Vector3) {
-    this.fx.burst(at, { count: 10, color: ['#dff6ff', '#ffffff', '#a9e4ff'], speed: 0.5, up: 1.2, size: 0.04, life: 1.1, gravity: -0.8 });
+    this.sparkles.burst('bubble', at, { count: 6, speed: 0.3, up: 0.6, size: 0.1, life: 1.4, gravity: -0.5 });
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -635,8 +673,9 @@ export class Store {
   // Camera
 
   fitAspect(aspect: number) {
-    // keep ~5.6 units of aisle visible across narrow screens
-    const needV = 2 * Math.atan(Math.tan(Math.atan(2.8 / FAR)) / aspect);
+    // keep ~5.6 units of aisle visible across (a bit less on phones held upright)
+    const half = aspect < 1 ? 1.9 : 2.8;
+    const needV = 2 * Math.atan(Math.tan(Math.atan(half / FAR)) / aspect);
     this.camera.fov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(needV), 34, 70);
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
@@ -669,6 +708,11 @@ export class Store {
   private updateCamera(dt: number) {
     if (this.phase !== 'aisle') {
       this.camera.position.copy(this.introCam.pos);
+      if (this.phase === 'outside') {
+        // a gentle idle sway on the title screen
+        this.camera.position.x += Math.sin(this.time * 0.35) * 0.25 + this.mouse.x * 0.3;
+        this.camera.position.y += Math.sin(this.time * 0.5) * 0.06 + this.mouse.y * 0.12;
+      }
       this.camera.lookAt(this.introCam.look);
       this.sun.position.set(this.introCam.pos.x + 4, 8, this.introCam.pos.z + 3);
       this.sun.target.position.set(this.introCam.pos.x, 0, STORE.frontZ - 2);
@@ -705,12 +749,15 @@ export class Store {
   }
 
   update(dt: number, time: number) {
+    this.time = time;
     this.updateCamera(dt);
+    if (this.phase !== 'aisle') this.street.update(dt, this.camera, this.camera.position.x);
     for (const s of this.signs) s.rotation.z = Math.sin(time * 0.9 + s.userData.swayPhase) * 0.03;
     this.clerk.update(dt, time, this.camera);
     this.stock.update(dt);
     this.fx.update(dt);
-    if (this.phase === 'aisle' || this.phase === 'walking') this.shoppers.update(dt, this.camera, this.camX);
+    this.sparkles.update(dt, this.camera, this.renderH);
+    if (this.phase === 'aisle' || this.phase === 'walking') this.shoppers.update(dt, this.camera, this.camX, this.zoom);
     for (const p of this.promoters) {
       p.next -= dt;
       if (p.next <= 0) {
@@ -737,6 +784,19 @@ export class Store {
       const h = Math.min(1.2, it.hover);
       it.group.position.y = it.baseY + h * 0.05;
       it.group.rotation.z = h > 0.01 ? Math.sin(time * 10 + it.wobble) * 0.05 * h : 0;
+      if (it.pop) {
+        // picked: hop toward the camera with a happy spin, then settle back
+        it.pop = Math.min(1, it.pop + dt / 0.9);
+        const k = Math.sin(it.pop * Math.PI);
+        it.group.position.y = it.baseY + k * 0.25;
+        it.group.position.z = (it.group.userData.baseZ ??= it.group.position.z) + k * 0.35;
+        it.group.rotation.y = (it.group.userData.baseRY ??= it.group.rotation.y) + ease.inOutCubic(it.pop) * Math.PI * 2;
+        if (it.pop >= 1) {
+          it.pop = 0;
+          it.group.position.z = it.group.userData.baseZ;
+          it.group.rotation.y = it.group.userData.baseRY;
+        }
+      }
     }
     const sec = sectionAt(this.camX);
     if (sec.id !== this.lastSection && this.phase === 'aisle') {

@@ -71,6 +71,7 @@ export class App {
     this.pixel = new PixelRenderer(root);
     const mask = pixelTexture(drawLogo(64, { badge: false }).toCanvas());
     this.pixel.iris.mask = mask;
+    this.pixel.transitionColor.set('#f59ab6');
     audio.setMuted(!this.state.data.sound);
 
     this.store = new Store(this.pixel.canvas, this.tweens);
@@ -113,6 +114,7 @@ export class App {
     if (this.mode === 'showcase') this.pixel.setTargetLines(this.showcase.focusMode ? 380 : 460, 1, 4);
     else this.pixel.setTargetLines(430, 1, 4);
     this.pixel.resize(w, hh);
+    this.store.renderH = this.showcase.renderH = this.pixel.height;
     this.store.fitAspect(this.pixel.aspect);
     this.showcase.resize(this.pixel.aspect);
   }
@@ -507,6 +509,13 @@ export class App {
     this.revealed = true;
     if (!first) return;
     this.state.addMade();
+    const f = this.showcase.item?.focusView();
+    if (f) {
+      const sp = this.showcase.sparkles;
+      sp.burst('star', f.center.clone().add(new THREE.Vector3(0, 0.2, 0)), { count: 8, speed: 1.4, up: 1.6, size: 0.16, life: 1.2, gravity: 1.5, jitter: f.size * 0.6 });
+      sp.burst('heart', f.center.clone().add(new THREE.Vector3(0, 0.3, 0)), { count: 6, speed: 0.8, up: 1.2, size: 0.14, life: 1.5, gravity: -0.2, jitter: f.size * 0.5 });
+      sp.burst('music', f.center.clone().add(new THREE.Vector3(-0.3, 0.4, 0)), { count: 3, speed: 0.4, up: 0.8, size: 0.14, life: 1.6, gravity: -0.3 });
+    }
     void this.showcase.clerk.cheer().then(() => {
       if (this.mode !== 'showcase' || !this.revealed) return;
       void this.showcase.clerk.print(this.receiptTexture());

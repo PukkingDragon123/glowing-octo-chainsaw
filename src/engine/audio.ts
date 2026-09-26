@@ -23,7 +23,13 @@ export type Sfx =
   | 'zap'
   | 'splash'
   | 'crack'
-  | 'ding';
+  | 'ding'
+  | 'boop'
+  | 'bubble'
+  | 'sparkle'
+  | 'mech'
+  | 'print'
+  | 'beep';
 
 const NOTE = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
 
@@ -224,6 +230,27 @@ export class Audio {
       case 'crack':
         this.noise(0.09, 0.4, 'bandpass', 1800, 700, 0, 1.5);
         this.tone(300, 0.08, 'square', 0.05, 0.02, 120);
+        break;
+      case 'boop':
+        this.tone(420 * r, 0.09, 'sine', 0.22, 0, 900 * r);
+        this.tone(900 * r, 0.06, 'triangle', 0.06, 0.07, 1200 * r);
+        break;
+      case 'bubble':
+        this.tone((500 + Math.random() * 300) * r, 0.08, 'sine', 0.14, 0, 1400 * r);
+        break;
+      case 'sparkle':
+        [88, 91, 95, 100].forEach((n, i) => this.tone(NOTE(n) * r, 0.08, 'triangle', 0.035, i * 0.045));
+        break;
+      case 'mech':
+        this.tone(140 * r, 0.22, 'sawtooth', 0.04, 0, 220 * r);
+        this.noise(0.2, 0.06, 'bandpass', 900, 1600, 0, 3);
+        break;
+      case 'print':
+        for (let i = 0; i < 8; i++) this.tone(2200 + (i % 2) * 400, 0.03, 'square', 0.025, i * 0.06);
+        this.noise(0.5, 0.05, 'bandpass', 3000, undefined, 0, 4);
+        break;
+      case 'beep':
+        this.tone(1760 * r, 0.12, 'square', 0.05);
         break;
     }
   }

@@ -74,8 +74,8 @@ export const CAST: Record<string, BuddySpec> = {
       color: '#3f7d3a',
       shade: '#2c5c2c',
       pattern: (b, m) => {
-        b.paint(ellipse(m.w, m.h, m.w * 0.48, m.h * 0.55, m.w * 0.36, m.h * 0.38).intersect(m), '#d8e88a');
-        b.paint(ellipse(m.w, m.h, m.w * 0.48, m.h * 0.72, 5, 5), '#8a5a36');
+        b.paint(ellipse(m.w, m.h, m.w * 0.48, m.h * 0.56, m.w * 0.34, m.h * 0.36).intersect(m), '#d8e88a');
+        b.paint(ellipse(m.w, m.h, m.w * 0.48, m.h * 0.8, 3.5, 3), '#8a5a36');
       },
     },
     eyes: { y: 0.4 },

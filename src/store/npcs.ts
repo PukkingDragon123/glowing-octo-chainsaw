@@ -44,7 +44,7 @@ export class Shoppers {
     void b.boop();
   }
 
-  update(dt: number, camera: THREE.Camera, camX: number) {
+  update(dt: number, camera: THREE.Camera, camX: number, zoom = 0) {
     for (const s of this.list) {
       const b = s.b;
       const dx = s.target - b.position.x;
@@ -73,6 +73,8 @@ export class Shoppers {
         s.waved = 14 + Math.random() * 10;
         void b.wave();
       }
+      // step out of the way when the camera leans in close
+      b.visible = !(zoom > 0.28 && Math.abs(b.position.x - camX) < 0.9 + (1 - zoom) * 1.6);
       b.update(dt, camera);
     }
   }

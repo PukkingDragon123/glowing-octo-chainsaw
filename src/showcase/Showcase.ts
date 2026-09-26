@@ -8,6 +8,7 @@ import { Stock } from '../store/stock';
 import { lampsAndBunting } from '../store/fixtures';
 import { makeClerk, type ClerkAPI } from '../app/clerkApi';
 import type { Aisle } from '../art/foods';
+import { Sparkles } from '../art/sparkles';
 
 /**
  * The checkout counter where products perform. The clerk floats behind it, the store glows in
@@ -19,6 +20,8 @@ export class Showcase {
   readonly controls: OrbitControls;
   readonly clerk: ClerkAPI;
   item: ShowcaseItem | null = null;
+  readonly sparkles = new Sparkles();
+  renderH = 400;
   focusMode = false;
   active = false;
   /** Called with a click (tap without dragging) on the stage. */
@@ -81,14 +84,20 @@ export class Showcase {
     for (let i = 0; i < 6; i++) {
       const x0 = -9 + i * 3;
       const x1 = x0 + 2.9;
+      const cx = (x0 + x1) / 2;
       const z = -6.4;
-      back.rbox(2.9, 2.2, 0.8, 0.06, '#ffffff', (x0 + x1) / 2, -1.0, z - 0.1);
-      back.rbox(2.8, 2.05, 0.05, 0.03, colors[i], (x0 + x1) / 2, -0.95, z - 0.45);
-      for (const y of [-0.8, -0.3, 0.2, 0.7]) {
-        back.rbox(2.76, 0.04, 0.7, 0.02, '#fffdf8', (x0 + x1) / 2, y - 0.04, z - 0.1);
-        back.rbox(2.76, 0.06, 0.03, 0.015, colors[i], (x0 + x1) / 2, y - 0.07, z + 0.25);
+      // open shelving: coloured back panel, white uprights, boards with coloured lips
+      back.rbox(2.9, 2.2, 0.06, 0.03, colors[i], cx, -1.0, z - 0.42);
+      back.rbox(0.08, 2.25, 0.8, 0.035, '#ffffff', x0 + 0.04, -1.0, z - 0.05);
+      back.rbox(0.08, 2.25, 0.8, 0.035, '#ffffff', x1 - 0.04, -1.0, z - 0.05);
+      back.rbox(2.9, 0.14, 0.8, 0.05, colors[i], cx, -1.0, z - 0.05);
+      for (const y of [-0.3, 0.2, 0.7]) {
+        back.rbox(2.76, 0.04, 0.72, 0.02, '#fffdf8', cx, y - 0.04, z - 0.05);
+        back.rbox(2.76, 0.06, 0.03, 0.015, colors[i], cx, y - 0.07, z + 0.31);
+      }
+      for (const y of [-0.86, -0.3, 0.2, 0.7]) {
         const pool = aisles[i].filter((a) => stock.aisle(a).length);
-        stock.fillShelf(x0 + 0.08, x1 - 0.08, y, z + 0.1, pool.length ? pool : (['bakery'] as Aisle[]), { seed: 40 + i * 5 + Math.round(y * 10), rows: 1, only: pool.length ? undefined : stock.defs.map((d) => d.id) });
+        stock.fillShelf(x0 + 0.1, x1 - 0.1, y, z + 0.18, pool.length ? pool : (['bakery'] as Aisle[]), { seed: 40 + i * 5 + Math.round(y * 10), rows: 2, only: pool.length ? undefined : stock.defs.map((d) => d.id) });
       }
     }
     this.scene.add(back.build({ castShadow: false }));
@@ -107,7 +116,7 @@ export class Showcase {
     this.clerk.root.scale.setScalar(1.15);
     this.scene.add(this.clerk.root);
 
-    this.scene.add(this.stage);
+    this.scene.add(this.stage, this.sparkles.group);
 
     this.controls = new OrbitControls(this.camera, dom);
     this.controls.enableDamping = true;
@@ -252,6 +261,7 @@ export class Showcase {
   update(dt: number, time: number) {
     this.item?.update(dt, time, this.camera);
     this.clerk.update(dt, time, this.camera);
+    this.sparkles.update(dt, this.camera, this.renderH);
     if (this.controls.enabled) this.controls.update();
   }
 
