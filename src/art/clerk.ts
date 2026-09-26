@@ -532,8 +532,9 @@ export class Clerk {
     this.receiptMat.needsUpdate = true;
     const img = tex.image as { width?: number; height?: number } | undefined;
     const aspect = img && img.width && img.height ? img.height / img.width : 2;
-    this.receiptW = 0.25;
-    this.receiptLen = clamp(this.receiptW * aspect, 0.3, 0.6);
+    // big enough to spot and tap from the counter view
+    this.receiptW = 0.34;
+    this.receiptLen = clamp(this.receiptW * aspect, 0.4, 0.78);
     this.receiptP = 0;
     this.receiptOut = true;
     this.receipt.visible = true;
