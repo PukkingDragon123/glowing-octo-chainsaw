@@ -126,6 +126,24 @@ export class Stock {
     return this.group;
   }
 
+  private hovered: { mesh: THREE.InstancedMesh; id: number } | null = null;
+  private hoverT = 0;
+
+  /** Lift the item under the pointer a little (null clears). */
+  hover(mesh: THREE.InstancedMesh | null, id = -1) {
+    const same = this.hovered && mesh === this.hovered.mesh && id === this.hovered.id;
+    if (same) return;
+    if (this.hovered) this.restore(this.hovered.mesh, this.hovered.id);
+    this.hovered = mesh ? { mesh, id } : null;
+    this.hoverT = 0;
+  }
+
+  private restore(mesh: THREE.InstancedMesh, id: number) {
+    if (this.boops.some((b) => b.mesh === mesh && b.id === id)) return;
+    mesh.setMatrixAt(id, this.base.get(mesh)![id]);
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
   /** Squash-hop an item (click feedback). */
   boop(mesh: THREE.InstancedMesh, id: number) {
     if (this.boops.some((b) => b.mesh === mesh && b.id === id)) return;
@@ -139,6 +157,15 @@ export class Stock {
   }
 
   update(dt: number) {
+    const h = this.hovered;
+    if (h && !this.boops.some((b) => b.mesh === h.mesh && b.id === h.id)) {
+      this.hoverT = Math.min(1, this.hoverT + dt * 10);
+      const base = this.base.get(h.mesh)![h.id];
+      this.m.copy(base);
+      this.m.elements[13] += this.hoverT * 0.035;
+      h.mesh.setMatrixAt(h.id, this.m);
+      h.mesh.instanceMatrix.needsUpdate = true;
+    }
     if (!this.boops.length) return;
     for (const b of this.boops) {
       b.t += dt;

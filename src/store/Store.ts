@@ -527,7 +527,10 @@ export class Store {
       if (e.key === '-' || e.key === '_') this.zoomAt(null, null, -0.25);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
-    c.addEventListener('pointerleave', () => this.setHover(null));
+    c.addEventListener('pointerleave', () => {
+      this.setHover(null);
+      this.stock.hover(null);
+    });
   }
 
   /** World units per screen pixel at the shelf plane for the target zoom. */
@@ -587,6 +590,7 @@ export class Store {
     const food = p?.kind === 'food' ? { mesh: p.mesh, index: p.index } : null;
     if (food && (food.mesh !== this.hoverFood?.mesh || food.index !== this.hoverFood?.index)) audio.play('blip', { rate: 1.6 + Math.random() * 0.3, minGap: 0.06 });
     this.hoverFood = food;
+    this.stock.hover(food?.mesh ?? null, food?.index ?? -1);
   }
 
   private click(x: number, y: number, dbl: boolean) {
