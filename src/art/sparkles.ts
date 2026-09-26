@@ -88,6 +88,12 @@ class Pool {
     (this.points.geometry.attributes.spin as THREE.BufferAttribute).needsUpdate = true;
   }
 
+  clear() {
+    this.life.fill(0);
+    this.size.fill(0);
+    (this.points.geometry.attributes.size as THREE.BufferAttribute).needsUpdate = true;
+  }
+
   update(dt: number) {
     for (let i = 0; i < this.n; i++) {
       if (this.life[i] <= 0) {
@@ -133,6 +139,11 @@ export class Sparkles {
       this.pools.set(k, p);
       this.group.add(p.points);
     }
+  }
+
+  /** Remove every live particle (e.g. before a scan view). */
+  clear() {
+    for (const p of this.pools.values()) p.clear();
   }
 
   burst(kind: SparkleKind, at: THREE.Vector3, o: BurstOptions = {}) {

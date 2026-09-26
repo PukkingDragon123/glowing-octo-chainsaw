@@ -562,18 +562,43 @@ export class App {
     if (this.mode === 'showcase') this.resize();
     if (on) {
       audio.play('ding');
+      this.showcase.sparkles.clear();
       this.showcase.focusCamera();
     } else this.showcase.heroCamera();
   }
 
-  /** Read the QR code straight off the rendered 3D frame (proves the scene itself scans). */
+  /**
+   * Read the QR code straight off the rendered 3D frame (proves the scene itself scans). Tries the
+   * whole frame, then a crop around the code (packaging nearby can carry a second, smaller copy).
+   */
   scanView(): string | null {
     const src = this.pixel.canvas;
     const c = document.createElement('canvas');
     c.width = src.width;
     c.height = src.height;
     c.getContext('2d')!.drawImage(src, 0, 0);
-    return scanCanvas(c, 1400);
+    const full = scanCanvas(c, 1400);
+    if (full === this.qr.text || !this.showcase.item) return full;
+    const f = this.showcase.item.focusView();
+    const right = new THREE.Vector3().crossVectors(f.up, f.normal).normalize();
+    const rect = src.getBoundingClientRect();
+    const k = src.width / rect.width;
+    const pts = [-1, 1].flatMap((a) =>
+      [-1, 1].map((b) => {
+        const p = project(f.center.clone().addScaledVector(right, (a * f.size) / 2).addScaledVector(f.up, (b * f.size) / 2), this.showcase.camera, src);
+        return { x: (p.x - rect.left) * k, y: (p.y - rect.top) * k };
+      }),
+    );
+    const x0 = Math.min(...pts.map((p) => p.x));
+    const y0 = Math.min(...pts.map((p) => p.y));
+    const w = Math.max(...pts.map((p) => p.x)) - x0;
+    const h = Math.max(...pts.map((p) => p.y)) - y0;
+    const m = Math.max(w, h) * 0.12;
+    const crop = document.createElement('canvas');
+    crop.width = Math.max(1, Math.round(w + m * 2));
+    crop.height = Math.max(1, Math.round(h + m * 2));
+    crop.getContext('2d')!.drawImage(c, x0 - m, y0 - m, crop.width, crop.height, 0, 0, crop.width, crop.height);
+    return scanCanvas(crop, 1400) ?? full;
   }
 
   // -----------------------------------------------------------------------------------------------

@@ -33,20 +33,18 @@ const results = [];
 for (const id of list) {
   const flavors = await page.evaluate((pid) => window.__app.products.find((p) => p.id === pid).flavors.map((f) => f.id), id);
   const pref = await page.evaluate((pid) => window.__app.products.find((p) => p.id === pid).preferredMode ?? '', id);
+  // only the first flavor is used in the game now; test short, long and (thorough) extra sizes
   const runs = [['short', 'https://qr.market/'], ['long', LONG]];
   if (args.includes('--thorough')) {
-    runs.length = 0;
-    for (const f of flavors) {
-      runs.push([`v3:${f}`, 'https://example.com/a/fairly/long/link/to/test/density?utm_source=qrmarket']);
-      runs.push([`v4:${f}`, 'https://pukkingdragon123.github.io/glowing-octo-chainsaw/']);
-      runs.push([`v6:${f}`, LONG]);
-    }
+    runs.push(['v3', 'https://example.com/a/fairly/long/link/to/test/density?utm_source=qrmarket']);
+    runs.push(['v4', 'https://pukkingdragon123.github.io/glowing-octo-chainsaw/']);
+    runs.push(['text', 'Hello from Xolotl Kobini! Pay me a visit, the axolotl says hi.']);
   }
   // photo/video-first products also get a real pixel postcard / flipbook (a much denser code)
   if (pref === 'image') runs.push(['art', '@art1']);
   if (pref === 'video') runs.push(['art', '@art6']);
   for (const [k, text] of runs) {
-    const flavor = k.includes(':') ? k.split(':')[1] : flavors[k === 'short' ? 0 : k === 'art' ? 1 % flavors.length : flavors.length - 1];
+    const flavor = flavors[0];
     const r = await page.evaluate(
       async ({ pid, fid, text }) => {
         const a = window.__app;
@@ -68,7 +66,7 @@ for (const id of list) {
     );
     if (shotDir) await page.screenshot({ path: `${shotDir}/${id}-${flavor}-${k}.png` });
     results.push({ id, flavor, k, ...r });
-    console.log(`${r.view && r.poster ? 'PASS' : 'FAIL'}  ${id.padEnd(16)} ${flavor.padEnd(12)} ${k.split(':')[0].padEnd(5)} v${String(r.version).padEnd(3)} 3D:${r.view ? 'ok ' : 'NO '} poster:${r.poster ? 'ok' : 'NO'}`);
+    console.log(`${r.view && r.poster ? 'PASS' : 'FAIL'}  ${id.padEnd(16)} ${flavor.padEnd(12)} ${k.padEnd(5)} v${String(r.version).padEnd(3)} 3D:${r.view ? 'ok ' : 'NO '} poster:${r.poster ? 'ok' : 'NO'}`);
   }
 }
 await browser.close();

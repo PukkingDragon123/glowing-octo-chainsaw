@@ -146,6 +146,7 @@ export class Showcase {
 
   /** Put the camera at the item's hero framing. */
   heroCamera(instant = false) {
+    this.resetFog();
     if (!this.item) return;
     const h = this.item.hero;
     const yaw = h.yaw ?? 0;
@@ -163,6 +164,7 @@ export class Showcase {
 
   /** Frame the package front so the sticker is readable. */
   labelCamera(center: THREE.Vector3, normal: THREE.Vector3, width: number, instant = false) {
+    this.resetFog();
     const vFov = THREE.MathUtils.degToRad(this.camera.fov);
     const aspect = this.camera.aspect;
     // the sticker should fill ~45% of the screen width (more on phones)
@@ -185,7 +187,18 @@ export class Showcase {
     const pos = f.center.clone().add(f.normal.clone().multiplyScalar(dist));
     if (Math.abs(f.normal.y) > 0.9) pos.addScaledVector(f.up, -dist * 0.004);
     this.flyTo(pos, f.center.clone(), 0.8);
+    // calm everything behind the code into flat fog so scanners only see the code
+    const fog = this.scene.fog as THREE.Fog;
+    fog.near = dist + f.size * 0.6;
+    fog.far = dist + f.size * 0.6 + 1.2;
     return f;
+  }
+
+  /** Normal soft fog for the hero view. */
+  private resetFog() {
+    const fog = this.scene.fog as THREE.Fog;
+    fog.near = 10;
+    fog.far = 24;
   }
 
   private flyTo(pos: THREE.Vector3, target: THREE.Vector3, dur: number) {
