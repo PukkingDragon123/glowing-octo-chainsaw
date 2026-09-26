@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { Painter, shade } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
 import { rng } from '../../engine/tween';
-import { VoxelGrid } from '../../engine/voxel';
+import { buddyPortrait, drawEyes, drawMouth, type BuddySpec, type EyeStyle, type MouthStyle, type Pose } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor } from '../types';
 
 export const INK = '#1d1b26';
@@ -179,42 +180,21 @@ function clipTo(layer: Painter, poly: Pt[]) {
   layer.ctx.globalCompositeOperation = 'source-over';
 }
 
-/** Little rice-ball mascot: white triangle, nori belt, rosy cheeks. ~w×(w*0.9) px. */
-export function drawRiceBuddy(p: Painter, x: number, y: number, w: number, f: Flavor, mood: 'happy' | 'wink' | 'sleep' = 'happy') {
-  const h = Math.round(w * 0.9);
-  const L = new Painter(w + 2, h + 2);
-  const cx = (w + 2) / 2;
-  const tri = roundedPolygon([[1, h + 1], [w + 1, h + 1], [cx, 1]], [w * 0.2, w * 0.2, w * 0.22], 4);
-  L.poly(tri, '#ffffff');
-  // nori belt
-  const beltH = Math.max(2, Math.round(h * 0.34));
-  L.ctx.save();
-  const clipL = new Painter(w + 2, h + 2);
-  clipL.poly(tri, '#fff');
-  const belt = new Painter(w + 2, h + 2);
-  belt.rect(0, h + 1 - beltH, w + 2, beltH, NORI);
-  belt.rect(0, h + 1 - beltH, w + 2, 1, '#34483a');
-  belt.ctx.globalCompositeOperation = 'destination-in';
-  belt.ctx.drawImage(clipL.canvas, 0, 0);
-  L.blit(belt, 0, 0);
-  L.ctx.restore();
-  // filling dot on top
-  L.disc(cx, Math.round(h * 0.3), Math.max(1, w * 0.09), f.c.fill);
-  // face
-  const ey = Math.round(h * 0.52);
-  const ex = Math.max(2, Math.round(w * 0.16));
-  if (mood === 'sleep') {
-    L.rect(cx - ex - 1, ey, 2, 1, INK).rect(cx + ex - 1, ey, 2, 1, INK);
-  } else {
-    L.rect(cx - ex - 1, ey - 1, 2, 2, INK);
-    if (mood === 'wink') L.rect(cx + ex - 1, ey, 2, 1, INK);
-    else L.rect(cx + ex - 1, ey - 1, 2, 2, INK);
-    L.px(cx - ex - 1, ey - 1, '#ffffff');
-  }
-  L.px(cx - ex - 3, ey + 1, '#ff9fb5').px(cx + ex + 1, ey + 1, '#ff9fb5');
-  L.px(cx - 1, ey + 1, '#7a1f2b').px(cx, ey + 1, '#7a1f2b');
-  L.outline(INK);
-  p.blit(L, x - 1, y - 1);
+/** A mascot at packaging size: body, face and limbs shrink together (the pixel style stays). */
+export function miniSpec(spec: BuddySpec, k: number): BuddySpec {
+  const L = spec.limbs ?? { color: '#58a88f', tip: '#f3d270' };
+  return {
+    ...spec,
+    body: { ...spec.body, w: Math.round(spec.body.w * k), h: Math.round(spec.body.h * k) },
+    eyes: { ...spec.eyes, gap: spec.eyes?.gap !== undefined ? spec.eyes.gap * k : undefined, r: spec.eyes?.r !== undefined ? Math.max(1.5, spec.eyes.r * k) : undefined },
+    mouth: { ...spec.mouth, w: spec.mouth?.w !== undefined ? Math.round(spec.mouth.w * k) : undefined },
+    limbs: { ...L, arm: Math.round((L.arm ?? 13) * k), leg: Math.round((L.leg ?? 9) * k), thick: Math.max(4, Math.round((L.thick ?? 6) * k)) },
+  };
+}
+
+/** The onigiri buddy as a flat portrait, `k` = size relative to the full mascot. */
+export function oniArt(k: number, pose: Pose = {}): Painter {
+  return buddyPortrait(k === 1 ? CAST.oni : miniSpec(CAST.oni, k), pose).toPainter();
 }
 
 /** Tiny filling pictogram for the label. */
@@ -271,7 +251,7 @@ export function filmFront(f: Flavor): Painter {
   p.rect(lx + 3, ly + lh - 3, lw - 6, 1, f.c.dark);
   const half = Math.floor(lw / 2);
   const panel = half - 5; // strip covers the middle ±5px
-  // left: mascot on a sunburst
+  // left: the onigiri buddy waving on a sunburst, popping out over the top edge of the label
   const mcx = lx + Math.round(panel / 2) + 1;
   const mcy = ly + Math.round(lh / 2);
   p.disc(mcx, mcy, 12, shade(f.c.main, 0.12));
@@ -279,7 +259,8 @@ export function filmFront(f: Flavor): Painter {
     const a = (i / 8) * Math.PI * 2;
     p.line(mcx + Math.cos(a) * 8, mcy + Math.sin(a) * 8, mcx + Math.cos(a) * 12, mcy + Math.sin(a) * 12, shade(f.c.main, 0.22));
   }
-  drawRiceBuddy(p, mcx - 9, mcy - 9, 18, f);
+  const oni = oniArt(0.62, { armL: 0.45, armR: 2.5 });
+  p.blit(oni, Math.round(mcx - oni.w / 2) - 1, ly + lh - 1 - oni.h);
   // right: flavour name + pictogram
   const [l1, l2] = LABEL_LINES[f.id] ?? [f.name.toUpperCase(), ''];
   const rx = lx + half + 5;
@@ -290,15 +271,10 @@ export function filmFront(f: Flavor): Painter {
   p.text(l1, rx + rw / 2, ly + 4, { font: f1, color: '#ffffff', outline: INK, align: 'center' });
   p.text(l2, rx + rw / 2, ly + (f1 === FONT_BIG ? 13 : 11), { font: f2, color: f.c.accent, outline: INK, align: 'center' });
   drawFilling(p, rx + Math.round(rw / 2) - 7, ly + lh - 13, f);
-  // NEW burst on the label corner
-  p.burst(lx + 1, ly + 1, 8, 10, INK);
-  p.burst(lx + 1, ly + 1, 7, 10, f.c.accent);
-  p.text('NEW', lx + 1, ly - 1, { font: FONT_TINY, color: INK, align: 'center' });
 
   // brand logo along the bottom, either side of the strip
   p.text('ONIGIRI', fx(-0.22), fy(0.21), { font: FONT_TINY, color: '#ffffff', outline: INK, align: 'right' });
   p.text('QR', fx(0.2), fy(0.21), { font: FONT_TINY, color: f.c.accent, outline: INK });
-  p.text('110G', fx(0.62), fy(0.21), { font: FONT_TINY, color: '#ffffff', outline: INK });
 
   // "OPEN" arrows towards the corner tabs
   const arrow = (x: number, y: number, dir: -1 | 1) => {
@@ -415,36 +391,26 @@ export function riceTexture(): THREE.CanvasTexture {
   return t;
 }
 
-/** Face decal: sleeping (in the wrapper), blinking, or wide awake. 48 px per world unit. */
-export function faceArt(mode: 'sleep' | 'blink' | 'open'): Painter {
-  const p = new Painter(44, 18);
-  const cx = 22;
-  const ey = 5;
-  const blush = 'rgba(255,143,170,0.9)';
-  p.ellipse(cx - 13.5, ey + 8, 3.5, 1.7, blush);
-  p.ellipse(cx + 13.5, ey + 8, 3.5, 1.7, blush);
-  const eye = (x: number) => {
-    if (mode === 'open') {
-      p.sprite(['.####.', '######', '######', '######', '######', '######', '.####.'], x - 3, ey - 1, { '#': INK });
-      p.rect(x - 2, ey, 2, 2, '#ffffff');
-      p.px(x + 1, ey + 3, '#ffffff');
-    } else if (mode === 'blink') {
-      p.rect(x - 2, ey + 3, 5, 1, INK);
-      p.px(x - 3, ey + 2, INK).px(x + 3, ey + 2, INK);
-    } else {
-      p.px(x - 3, ey + 2, INK).px(x + 3, ey + 2, INK).rect(x - 2, ey + 3, 5, 1, INK);
-    }
-  };
-  eye(cx - 8);
-  eye(cx + 8);
-  // mouth
-  if (mode === 'open') {
-    p.rect(cx - 2, ey + 7, 5, 1, '#7a1f2b');
-    p.rect(cx - 1, ey + 8, 3, 2, '#7a1f2b');
-    p.rect(cx - 1, ey + 9, 3, 1, '#ff8fa3');
-  } else {
-    p.px(cx - 1, ey + 7, '#7a1f2b').px(cx + 1, ey + 7, '#7a1f2b').px(cx, ey + 8, '#7a1f2b');
-  }
+/** Face decal size in texture px (48 px per world unit), and the height of its top edge on the rice. */
+export const FACE = { w: 48, h: 22, top: 1.975 };
+export type FaceMode = 'sleep' | 'blink' | 'open' | 'happy';
+
+/** The big onigiri's face, drawn with the buddy's own dot eyes, toothy grin and blush dots. */
+const FACE_SPEC: BuddySpec = { ...CAST.oni, body: { ...CAST.oni.body, w: 48, h: 44 }, eyes: { gap: 17, r: 2.8 }, mouth: { w: 14 } };
+
+/** Face decal: sleeping (in the wrapper), blinking, wide awake or beaming. */
+export function faceArt(mode: FaceMode): Painter {
+  const p = new Painter(FACE.w, FACE.h);
+  const cx = FACE.w / 2;
+  const eyes: EyeStyle = mode === 'open' ? 'dot' : mode === 'happy' ? 'happy' : 'closed';
+  const mouth: MouthStyle = mode === 'sleep' ? 'smile' : mode === 'happy' ? 'open' : 'grin';
+  const blush = CAST.oni.blush ?? '#ffb0b8';
+  p.ellipse(cx - 15.5, 11, 3.6, 2.4, blush);
+  p.ellipse(cx + 15.5, 11, 3.6, 2.4, blush);
+  const e = drawEyes(FACE_SPEC, eyes).toCanvas();
+  p.blit(e, Math.round(cx - e.width / 2), Math.round(6 - e.height / 2));
+  const m = drawMouth(FACE_SPEC, mouth).toCanvas();
+  p.blit(m, Math.round(cx - m.width / 2), 9);
   return p;
 }
 
@@ -510,34 +476,6 @@ export function leafArt(): Painter {
   return p;
 }
 
-/** Filling peeking out of the top of the rice ball. */
-export function fillingVoxels(f: Flavor): VoxelGrid {
-  const g = new VoxelGrid(12, 6, 9);
-  const r = rng(f.id.length * 13 + 3);
-  if (f.id === 'ume') {
-    g.sphere(6, 1.5, 4.5, 3.4, f.c.fill);
-    g.paint((x, y) => (r() < 0.25 ? f.c.fillDark : y > 3 && x < 6 ? shade(f.c.fill, 0.15) : null));
-    g.set(6, 5, 4, '#3f8f3a').set(7, 5, 4, '#56b04e');
-  } else {
-    g.ellipsoid(6, 1, 4.5, 5, 3, 3.8, f.c.fill);
-    g.paint(() => (r() < 0.3 ? f.c.fillDark : r() < 0.15 ? shade(f.c.fill, 0.2) : null));
-    if (f.id === 'pork') g.paint((_x, y) => (y >= 2 && r() < 0.2 ? '#ff6b3d' : null));
-    if (f.id === 'tuna') g.paint((_x, y) => (y >= 2 && r() < 0.12 ? '#6fbf4a' : null));
-  }
-  return g;
-}
-
-/** Tiny soy-sauce fish: the classic bento companion. */
-export function soyFishVoxels(): VoxelGrid {
-  const g = new VoxelGrid(13, 6, 5);
-  g.ellipsoid(6, 2.5, 2.5, 5, 2.4, 2, '#e8f4ff');
-  g.box(0, 1, 2, 1, 4, 2, '#e8f4ff');
-  g.box(11, 2, 2, 12, 3, 2, '#e53935');
-  g.box(4, 1, 1, 8, 2, 3, '#5a2e1a');
-  g.set(9, 3, 4, INK).set(9, 3, 0, INK);
-  return g;
-}
-
 // -------------------------------------------------------------------------------------------------
 // Shelf model: the wrapped onigiri baked into one opaque front texture.
 
@@ -562,7 +500,7 @@ export function bakedFront(f: Flavor, qrSize = 25): Painter {
   p.dither(fx(n0), fy(yb + (n1 - n0)), (n1 - n0) * FILM.PX, (n1 - n0) * FILM.PX, '#2b3d2f', 0.2);
   // sleeping face
   const face = faceArt('sleep');
-  p.blit(face, fx(0) - face.w / 2, fy(1.83));
+  p.blit(face, fx(0) - face.w / 2, fy(FACE.top));
   p.blit(filmFront(f), 0, 0);
   const strip = stripArt(2.35, 0.2);
   p.blit(strip, fx(0) - strip.w / 2, fy(2.37));
@@ -629,9 +567,11 @@ export function posterArt(f: Flavor): Painter {
   const face = faceArt('open');
   p.blit(face, w / 2 - face.w / 2, POSTER.codeY - 22);
 
-  // side mascots
-  drawRiceBuddy(p, 4, 42, 16, f, 'happy');
-  drawRiceBuddy(p, w - 21, 46, 16, f, 'wink');
+  // two onigiri buddies cheering either side of the code
+  const left = oniArt(0.62, { armL: 2.6, armR: 2.6, eyes: 'happy', mouth: 'open' });
+  p.blit(left, Math.min(POSTER.codeX - 3 - left.w, 3), 162 - left.h);
+  const right = oniArt(0.62, { armL: 0.6, armR: 2.5 });
+  p.blit(right, Math.max(POSTER.codeX + POSTER.codeSize + 3, w - 3 - right.w), 162 - right.h);
 
   // bottom banner with flavour + 1-2-3
   p.rect(0, 163, w, h - 163, f.c.main);

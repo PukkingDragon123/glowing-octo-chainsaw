@@ -242,11 +242,14 @@ export const CAST: Record<string, BuddySpec> = {
       color: '#fbfaff',
       shade: '#d9d6e6',
       pattern: (b, m) => {
-        b.paint(rect(m.w, m.h, m.w * 0.3, m.h * 0.72, m.w * 0.4, m.h).intersect(m), '#233a2c');
+        // nori belt with a glossy top edge, and a dab of filling peeking out on top
+        b.paint(rect(m.w, m.h, m.w * 0.28, m.h * 0.76, m.w * 0.44, m.h).intersect(m), '#233a2c');
+        b.paint(rect(m.w, m.h, m.w * 0.28 + 1, m.h * 0.76, m.w * 0.44 - 2, 0.6).intersect(m), '#3f5f48');
+        b.paint(ellipse(m.w, m.h, m.w / 2, m.h * 0.2, 2.6, 1.8).intersect(m.erode()), '#ff9470');
       },
     },
-    eyes: { y: 0.5 },
-    mouth: { y: 0.6, w: 12, style: 'smile' },
+    eyes: { y: 0.47 },
+    mouth: { y: 0.56, w: 12 },
     limbs: { color: '#4f9a4a', tip: '#ffe7a0' },
     blush: '#ffb0b8',
   },
@@ -266,6 +269,7 @@ export const CAST: Record<string, BuddySpec> = {
     top: { kind: 'swirl', color: '#fff4dc' },
     limbs: { color: '#fff4dc', tip: '#c98d5a' },
     mouth: { style: 'grin' },
+    blush: '#ff9ab0',
   },
   cubey: {
     id: 'cubey',
@@ -282,7 +286,7 @@ export const CAST: Record<string, BuddySpec> = {
       },
     },
     limbs: { color: '#7fb8e6', tip: '#ffffff' },
-    mouth: { style: 'open' },
+    mouth: { style: 'grin' },
     blush: '#ffb0d0',
   },
   lucky: {
@@ -305,6 +309,7 @@ export const CAST: Record<string, BuddySpec> = {
     top: { kind: 'sprout', color: '#3f8f45', color2: '#5fbf5a' },
     limbs: { color: '#3f8f45', tip: '#ffffff' },
     mouth: { style: 'grin' },
+    blush: '#ff9ab0',
   },
   capsu: {
     id: 'capsu',
@@ -319,8 +324,9 @@ export const CAST: Record<string, BuddySpec> = {
         b.paint(rect(m.w, m.h, 0, m.h * 0.44, m.w, 1.4).intersect(m), '#c43a55');
       },
     },
-    eyes: { y: 0.3 },
+    eyes: { y: 0.31 },
     mouth: { y: 0.58 },
+    blush: '#ffb0b8',
     limbs: { color: '#8a5cff', tip: '#ffe28a' },
   },
   snappy: {
@@ -338,6 +344,7 @@ export const CAST: Record<string, BuddySpec> = {
     },
     eyes: { y: 0.34 },
     mouth: { y: 0.46, w: 12 },
+    blush: '#ffb0b8',
     limbs: { color: '#f28a5a', tip: '#fff4dc' },
   },
   tapey: {
@@ -349,12 +356,17 @@ export const CAST: Record<string, BuddySpec> = {
       color: '#474a66',
       shade: '#33354d',
       pattern: (b, m) => {
-        b.paint(rect(m.w, m.h, 4, 3, m.w - 8, m.h * 0.62).intersect(m), '#ffe8b8');
-        b.paint(rect(m.w, m.h, 4, 3 + m.h * 0.5, m.w - 8, 2).intersect(m), '#ff7a8a');
+        b.paint(rect(m.w, m.h, 4, 3, m.w - 8, m.h * 0.6).intersect(m), '#ffe8b8');
+        b.paint(rect(m.w, m.h, 4, 3 + m.h * 0.54, m.w - 8, 1.5).intersect(m), '#ff7a8a');
+        // two little reel windows under the label
+        for (const x of [0.3, 0.7]) {
+          b.paint(ellipse(m.w, m.h, m.w * x, m.h * 0.84, 3.2, 2.4).intersect(m), '#fff4e0');
+          b.paint(ellipse(m.w, m.h, m.w * x, m.h * 0.84, 1.5, 1.1).intersect(m), '#33354d');
+        }
       },
     },
-    eyes: { y: 0.32, gap: 16 },
-    mouth: { y: 0.44, w: 12, style: 'smile' },
+    eyes: { y: 0.27, gap: 16 },
+    mouth: { y: 0.39, w: 12 },
     blush: '#ffb0b8',
     limbs: { color: '#ff7a8a', tip: '#ffe8b8', arm: 11, leg: 8 },
   },

@@ -3,9 +3,9 @@ import { FONT_TINY } from '../../engine/pixelFont';
 import type { Flavor } from '../types';
 import type { PixelArt } from '../../qr/pixelCodec';
 import { pixelArtCanvas } from '../../qr/pixelCapture';
-import { INK, PEN, shortTitle } from './art';
+import { INK, PEN, shortTitle, tapeyArt } from './art';
 
-/** Poster: the little TV showing the code, the VCR below and a film strip of the flipbook frames. */
+/** Poster: the little TV showing the code (tapey sitting on top), the VCR below and a film strip of the frames. */
 export function flipbookPosterArt(f: Flavor, flip: PixelArt, title: string) {
   const w = 120;
   const h = 134;
@@ -77,6 +77,15 @@ export function flipbookPosterArt(f: Flavor, flip: PixelArt, title: string) {
   const l2 = shortTitle(t.slice(l1.length).trim(), 8);
   p.text(l1, w - 19, fy + 6, { font: FONT_TINY, color: PEN, align: 'center' });
   if (l2) p.text(l2, w - 19, fy + 12, { font: FONT_TINY, color: PEN, align: 'center' });
-  p.strokeRect(0, 0, w, h, INK);
-  return { art: p, qrX: sx, qrY: sy, qrSize: ss };
+
+  // extra headroom so tapey can sit on the TV
+  const top = 16;
+  const out = new Painter(w, h + top);
+  out.clear(c.cover);
+  for (let y = 0; y < top; y += 8) for (let x = (y / 8) % 2 ? 4 : 0; x < w; x += 8) out.rect(x, y, 4, 4, shade(c.cover, 0.06));
+  out.blit(p, 0, top);
+  const tapey = tapeyArt(0.56, { armL: 2.6, armR: 2.6, eyes: 'happy', mouth: 'open' });
+  out.blit(tapey, w - 8 - tapey.w, top + 15 - tapey.h);
+  out.strokeRect(0, 0, w, h + top, INK);
+  return { art: out, qrX: sx, qrY: sy + top, qrSize: ss };
 }

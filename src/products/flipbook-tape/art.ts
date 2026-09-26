@@ -1,6 +1,7 @@
 import { Painter, shade } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
-import { VoxelGrid } from '../../engine/voxel';
+import { buddyPortrait, type BuddySpec, type Pose } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor } from '../types';
 import type { PixelArt } from '../../qr/pixelCodec';
 import { pixelArtCanvas } from '../../qr/pixelCapture';
@@ -13,6 +14,26 @@ export const TAPE_FLAVORS: Flavor[] = [
   { id: 'clear', name: 'Clear Purple', c: { main: '#9d4edd', shell: '#a66ce6', shellHi: '#c9a2f5', window: '#7b3fc4', tv: '#c3b1f2', tvDark: '#9f89d8', vcr: '#5e3aa8', vcrHi: '#7a55c6', accent: '#3ff8ff', cover: '#5a2a9e', cover2: '#3ff8ff' } },
   { id: 'pastel', name: 'Pastel', c: { main: '#ffafcc', shell: '#ffb8d2', shellHi: '#ffd6e5', window: '#f08db3', tv: '#ffe0ec', tvDark: '#f5bfd3', vcr: '#fff4f8', vcrHi: '#ffffff', accent: '#8ecae6', cover: '#ffc8dd', cover2: '#8ecae6' } },
 ];
+
+// ---------------------------------------------------------------------------------------------
+// Mascot
+
+/** A mascot at packaging size: body, face and limbs shrink together (the pixel style stays). */
+function miniSpec(spec: BuddySpec, k: number): BuddySpec {
+  const L = spec.limbs ?? { color: '#58a88f', tip: '#f3d270' };
+  return {
+    ...spec,
+    body: { ...spec.body, w: Math.round(spec.body.w * k), h: Math.round(spec.body.h * k) },
+    eyes: { ...spec.eyes, gap: spec.eyes?.gap !== undefined ? spec.eyes.gap * k : undefined, r: spec.eyes?.r !== undefined ? Math.max(1.5, spec.eyes.r * k) : undefined },
+    mouth: { ...spec.mouth, w: spec.mouth?.w !== undefined ? Math.round(spec.mouth.w * k) : undefined },
+    limbs: { ...L, arm: Math.round((L.arm ?? 13) * k), leg: Math.round((L.leg ?? 9) * k), thick: Math.max(4, Math.round((L.thick ?? 6) * k)) },
+  };
+}
+
+/** Tapey, the cassette buddy, as a flat portrait (`k` = size relative to the full mascot). */
+export function tapeyArt(k: number, pose: Pose = {}): Painter {
+  return buddyPortrait(k === 1 ? CAST.tapey : miniSpec(CAST.tapey, k), pose).toPainter();
+}
 
 // ---------------------------------------------------------------------------------------------
 // Default flipbook: a little blob hopping under the stars (6 frames, 24×24)
@@ -222,26 +243,14 @@ export function sleeveCover(f: Flavor): Painter {
   p.text('FLIP', w / 2, 4, { font: FONT_BIG, bold: true, color: '#ffffff', outline: INK, shadow: INK, shadowOffset: [0, 1], align: 'center' });
   p.text('BOOK', w / 2, 13, { font: FONT_BIG, bold: true, color: c.cover2, outline: INK, shadow: INK, shadowOffset: [0, 1], align: 'center' });
   p.text('TAPE', w / 2, 23, { font: FONT_TINY, color: '#ffffff', outline: INK, align: 'center' });
-  // TV mascot
-  const L = new Painter(24, 22);
-  L.roundRect(2, 3, 20, 15, 3, c.tv);
-  L.rect(5, 6, 11, 9, '#7ee0ff');
-  L.px(8, 9, INK).px(12, 9, INK).rect(9, 12, 3, 1, INK);
-  L.px(18, 7, INK).px(18, 11, INK);
-  L.thickLine(8, 3, 5, 0, 0.5, '#9a9aa6');
-  L.thickLine(14, 3, 18, 0, 0.5, '#9a9aa6');
-  L.rect(5, 18, 2, 3, INK).rect(17, 18, 2, 3, INK);
-  L.outline(INK);
-  p.blit(L, 10, 52);
-  // stickers
+  // tapey waving from the cover
+  const tapey = tapeyArt(0.5, { armL: 0.5, armR: 2.6 });
+  p.blit(tapey, 3, 76 - tapey.h);
   // "be kind, rewind" sticker: a rewind icon
-  p.disc(35, 70, 7, INK);
-  p.disc(35, 70, 6, '#ffe066');
-  p.poly([[30, 70], [34, 67], [34, 73]], INK);
-  p.poly([[34, 70], [38, 67], [38, 73]], INK);
-  p.rect(39, 67, 1, 6, INK);
-  p.roundRect(3, 70, 13, 7, 2, '#ffffff');
-  p.text('VHS', 9.5, 71, { font: FONT_TINY, color: INK, align: 'center' });
+  p.disc(36, 70, 6, INK);
+  p.disc(36, 70, 5, '#ffe066');
+  p.poly([[32, 70], [35.5, 67.5], [35.5, 72.5]], INK);
+  p.poly([[35.5, 70], [39, 67.5], [39, 72.5]], INK);
   p.strokeRect(0, 0, w, h, INK);
   return p;
 }
@@ -256,72 +265,13 @@ export function sleeveSpine(f: Flavor): Painter {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Voxels
+// The TV and the VCR (rounded shapes), world units
 
-/** CRT TV grid (scale 0.05). Screen opening x 2..21, y 4..21 on the front (z 21). */
-export const TV = { sx: 30, sy: 27, sz: 24, scale: 0.05, scrX0: 2, scrX1: 21, scrY0: 4, scrY1: 21 };
+/**
+ * Little CRT TV standing on y = 0, front face at z = `front`: a rounded body with a CRT hump at the
+ * back, a big rounded screen on the left and the knob panel on the right.
+ */
+export const TV = { w: 1.5, h: 1.25, d: 0.8, front: 0.5, scr: { x: -0.15, y: 0.69, w: 1.0, h: 0.9 }, knobX: 0.53 };
 
-export function tvVoxels(f: Flavor): VoxelGrid {
-  const g = new VoxelGrid(TV.sx, TV.sy, TV.sz);
-  const body = f.c.tv;
-  const dark = f.c.tvDark;
-  // main body (rounded front box) + tapered CRT back
-  const r = 2;
-  for (let z = 6; z <= 21; z++)
-    for (let y = 1; y <= 24; y++)
-      for (let x = 0; x <= 29; x++) {
-        const dx = Math.max(r - x, 0, x - (29 - r));
-        const dy = Math.max(1 + r - y, 0, y - (24 - r));
-        const dz = Math.max(6 + r - z, 0, z - (21 - r));
-        if (dx * dx + dy * dy + dz * dz <= r * r + 0.01) g.set(x, y, z, body);
-      }
-  g.box(4, 3, 1, 25, 21, 5, dark);
-  g.box(7, 5, 0, 22, 19, 0, shade(dark, -0.08));
-  // feet
-  for (const [x, z] of [[2, 7], [27, 7], [2, 19], [27, 19]] as const) g.box(x - 1, 0, z - 1, x, 0, z, INK);
-  // screen opening: dark tube rim, recessed
-  const { scrX0, scrX1, scrY0, scrY1 } = TV;
-  g.box(scrX0 - 1, scrY0 - 1, 21, scrX1 + 1, scrY1 + 1, 21, '#3a3a44');
-  g.box(scrX0, scrY0, 20, scrX1, scrY1, 21, null);
-  g.box(scrX0, scrY0, 19, scrX1, scrY1, 19, '#101014');
-  // bezel bevel
-  g.box(scrX0 - 2, scrY0 - 2, 21, scrX1 + 2, scrY0 - 2, 21, dark);
-  // knob panel
-  const knob = (cx: number, cy: number, rad: number, depth: number) => {
-    for (let y = cy - 3; y <= cy + 3; y++)
-      for (let x = cx - 3; x <= cx + 3; x++) {
-        const d = Math.hypot(x - cx, y - cy);
-        if (d <= rad) g.box(x, y, 22, x, y, 21 + depth, d > rad - 1 ? '#2c2c34' : '#4a4a56');
-      }
-  };
-  knob(25, 18, 2.4, 2);
-  knob(25, 12, 1.8, 1);
-  g.set(25, 20, 23, '#ffffff').set(25, 19, 23, '#ffffff').set(25, 13, 22, '#ffffff');
-  // speaker grille
-  for (let y = 3; y <= 8; y += 2) g.box(23, y, 21, 27, y, 21, shade(dark, -0.25));
-  // antenna base on top
-  g.box(12, 25, 11, 17, 25, 15, '#4a4a54');
-  g.box(13, 26, 12, 16, 26, 14, '#5a5a66');
-  return g;
-}
-
-/** VCR grid (scale 0.05): slot x 4..20, y 2..4 on the front (z 21). */
-export const VCR = { sx: 32, sy: 8, sz: 22, scale: 0.05, slotX0: 4, slotX1: 20, slotY0: 2, slotY1: 4 };
-
-export function vcrVoxels(f: Flavor): VoxelGrid {
-  const g = new VoxelGrid(VCR.sx, VCR.sy, VCR.sz);
-  const body = f.c.vcr;
-  const hi = f.c.vcrHi;
-  g.box(0, 1, 0, 31, 7, 21, body);
-  g.box(0, 7, 0, 31, 7, 21, hi);
-  g.box(0, 7, 21, 31, 7, 21, shade(hi, 0.1));
-  for (const [x, z] of [[1, 1], [30, 1], [1, 20], [30, 20]] as const) g.set(x, 0, z, INK);
-  // slot: hollow with dark walls
-  const { slotX0, slotX1, slotY0, slotY1 } = VCR;
-  g.box(slotX0 - 1, slotY0 - 1, 10, slotX1 + 1, slotY1 + 1, 21, INK);
-  g.box(slotX0, slotY0, 11, slotX1, slotY1, 21, null);
-  g.box(slotX0 - 1, slotY0 - 1, 21, slotX1 + 1, slotY0 - 1, 21, shade(body, -0.25));
-  // buttons row
-  for (let i = 0; i < 5; i++) g.set(22 + i * 2, 1, 21, i === 1 ? '#ff5d73' : '#9a9aa6');
-  return g;
-}
+/** VCR under the TV: front face at z = `front`, tape slot on the left. */
+export const VCR = { w: 1.6, h: 0.4, d: 1.1, front: 0.55, slot: { x: -0.175, y: 0.175, w: 0.85, h: 0.15 } };

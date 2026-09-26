@@ -1,12 +1,12 @@
 import { Painter, shade } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
 import type { Flavor } from '../types';
-import { INK, PLAQUE, RED, plaqueArt } from './art';
+import { INK, PLAQUE, RED, capsuArt, plaqueArt } from './art';
 
-/** Poster: the prize plaque over a capsule-pattern background with the gacha logo. */
+/** Poster: the prize plaque over a capsule-pattern background with the gacha logo; capsu pops out of the capsule. */
 export function gachaPosterArt(f: Flavor) {
   const w = 112;
-  const h = 154;
+  const h = 170;
   const p = new Painter(w, h);
   p.clear(RED);
   // capsule wallpaper
@@ -31,8 +31,8 @@ export function gachaPosterArt(f: Flavor) {
   // plaque with a drop shadow
   p.rect(px + 3, py + 3, PLAQUE.w, PLAQUE.h, shade(RED, -0.3));
   p.blit(plaqueArt(f, 0.3), px, py);
-  // open capsule halves at the bottom
-  const by = py + PLAQUE.h + 5;
+  // open capsule halves at the bottom (capsu pops out of the cup)
+  const by = py + PLAQUE.h + 20;
   const capsule = (x: number, y: number, top: boolean) => {
     const L = new Painter(22, 14);
     if (top) {
@@ -47,6 +47,8 @@ export function gachaPosterArt(f: Flavor) {
     p.blit(L, x, y);
   };
   capsule(5, by + 2, true);
+  const capsu = capsuArt(0.46, { armL: 2.6, armR: 2.6, eyes: 'happy', mouth: 'open', noLegs: true });
+  p.blit(capsu, w - 16 - Math.round(capsu.w / 2), by + 9 - capsu.h);
   capsule(w - 27, by + 4, false);
   p.text('YOU GOT', w / 2, by + 3, { font: FONT_TINY, color: '#ffffff', outline: INK, align: 'center' });
   p.text(f.c.label, w / 2, by + 11, { font: FONT_TINY, color: '#ffd23f', outline: INK, align: 'center' });
