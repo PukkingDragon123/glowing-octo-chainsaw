@@ -2,8 +2,11 @@ import * as THREE from 'three';
 import { Painter, shade } from '../../engine/Painter';
 import { ease } from '../../engine/tween';
 import { audio } from '../../engine/audio';
-import { toonGradient, voxelMaterial, voxelMesh } from '../../engine/voxel';
+import { toonGradient } from '../../engine/voxel';
 import { toonMat } from '../../engine/batch';
+import { Kit } from '../../store/kit';
+import { Buddy } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import { LAYER_NO_OUTLINE } from '../../engine/PixelRenderer';
 import type { Flavor, ProductContext, ProductDef, ShowcaseItem } from '../types';
 import { atlasBox } from '../common/box';
@@ -18,7 +21,6 @@ import {
   chocolateFace,
   glowSprite,
   metalFoil,
-  pedestalVoxels,
   posterArt,
   raysSprite,
   runnerTop,
@@ -312,6 +314,24 @@ function barModel(f: Flavor, s: number, shelf: boolean) {
   return { group, flaps, foilMat, height: h };
 }
 
+/** Round black marble plinth with gold rings and a puffy velvet cushion with tassels (top at y = 0.32). */
+function pedestalModel(f: Flavor) {
+  const k = new Kit();
+  k.cyl(0.44, 0.44, 0.03, f.c.metalLo, 0, 0, 0, 36);
+  k.cyl(0.405, 0.425, 0.13, '#1f1c26', 0, 0.03, 0, 36);
+  k.cyl(0.39, 0.4, 0.012, '#3a3544', 0, 0.1, 0, 36);
+  k.cyl(0.44, 0.44, 0.04, f.c.metal, 0, 0.16, 0, 36);
+  // deep velvet reds: the toon light brightens the top a lot
+  k.rbox(0.68, 0.09, 0.68, 0.045, '#6a0c22', 0, 0.2, 0);
+  k.sphere(0.31, '#7a0f2a', 0, 0.275, 0, 0.16);
+  for (const x of [-0.31, 0.31])
+    for (const z of [-0.31, 0.31]) {
+      k.cyl(0.012, 0.03, 0.06, f.c.metal, x, 0.14, z, 8);
+      k.sphere(0.025, f.c.metalHi, x, 0.215, z);
+    }
+  return k.build();
+}
+
 /** 0 = wrapped, 1 = curled open. The free end peels first and the curl travels down to the hinge. */
 function setPeel(fl: Flap, t: number) {
   const n = fl.pivots.length;
@@ -332,10 +352,10 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
 
   // pedestal + floating bar (back centre)
   const pedPos = new THREE.Vector3(0.3, 0, -0.85);
-  const pedestal = voxelMesh(pedestalVoxels(f), { scale: 0.04, anchor: 'bottom-center' });
+  const pedestal = pedestalModel(f);
   pedestal.position.copy(pedPos);
   root.add(pedestal);
-  const cushionTop = 8 * 0.04;
+  const cushionTop = 0.32;
   const bar = barModel(f, 1, false);
   const barPivot = new THREE.Group();
   root.add(barPivot);
@@ -401,6 +421,28 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   let twinkle = 0;
   const tmp = new THREE.Vector3();
 
+  // goldie, the star buddy, pops up beside the runner once the ticket is embossed
+  const goldieAt = new THREE.Vector3(2.1, 0, 0.8);
+  const goldie = new Buddy(CAST.goldie, 64);
+  goldie.billboard = true;
+  goldie.position.copy(goldieAt);
+  goldie.visible = false;
+  root.add(goldie);
+  let goldieNext = 4;
+  function popGoldie(animated: boolean) {
+    goldie.position.copy(goldieAt);
+    goldie.visible = !scanOn;
+    if (!animated) {
+      goldie.scale.setScalar(1);
+      return;
+    }
+    goldie.scale.setScalar(0.01);
+    void tweens.tween(0.5, (t) => {
+      goldie.scale.setScalar(Math.max(0.01, ease.outBack(t)));
+      goldie.position.y = goldieAt.y + Math.sin(t * Math.PI) * 0.35;
+    }, ease.linear, tg).then(() => void goldie.cheer());
+  }
+
   function hideRays() {
     rays.visible = false;
     rays.material.opacity = 0;
@@ -408,13 +450,14 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
 
   function setStart() {
     hideRays();
+    goldie.visible = false;
     barPivot.position.set(pedPos.x, floatY, pedPos.z);
     barPivot.rotation.set(0, 0, 0);
     for (const fl of bar.flaps) setPeel(fl, 0);
     ticket.group.visible = false;
     emboss.hideAll();
     shine.visible = false;
-    glow.position.set(pedPos.x, floatY, pedPos.z - 0.2);
+    glow.position.set(pedPos.x, floatY, pedPos.z - 0.5);
     glow.material.opacity = 0.3;
   }
   function setFinal() {
@@ -430,6 +473,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     shine.visible = false;
     glow.position.set(ticketRest.x, 0.3, ticketRest.z);
     glow.material.opacity = 0.18;
+    popGoldie(false);
   }
   setStart();
 
@@ -514,6 +558,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     }, 0.32);
     if (!alive()) return;
     audio.play('tada');
+    popGoldie(true);
     fx.burst(tmp.set(ticketRest.x, 0.2, ticketRest.z), { count: 70, color: golds, speed: 2.8, up: 3.6, size: 0.045, life: 1.4, gravity: 3.5 });
     done = true;
   }
@@ -532,11 +577,25 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     finish,
     actionLabel: 'Peel the foil!',
     hero: { target: new THREE.Vector3(0.3, 0.85, 0.12), distance: 5.9, yaw: 0.0, pitch: 0.46 },
-    update(dt) {
+    // the gold-framed window on the paper wrapper, under goldie
+    label: {
+      object: bar.group,
+      position: new THREE.Vector3(((WRAP.winX + WRAP.winW / 2) / WRAP.w - 0.5) * (BW + 0.012), PAPER * BH * (1 - (WRAP.winY + WRAP.winH / 2) / WRAP.h), (BD + 0.012) / 2 + 0.004),
+      size: [0.5, 0.25],
+    },
+    update(dt, _time, camera) {
       time += dt;
+      goldie.update(dt, camera);
+      if (done && !scanOn && goldie.visible) {
+        goldieNext -= dt;
+        if (goldieNext < 0) {
+          goldieNext = 4 + Math.random() * 3;
+          void (Math.random() < 0.5 ? goldie.spin() : goldie.hop());
+        }
+      }
       if (idle) {
         barPivot.position.y = floatY + Math.sin(time * 1.6) * 0.06;
-        barPivot.rotation.y = Math.sin(time * 0.8) * 0.4;
+        barPivot.rotation.y = Math.sin(time * 0.8) * 0.15;
         glow.material.opacity = 0.28 + Math.sin(time * 2.2) * 0.06;
         twinkle -= dt;
         if (twinkle <= 0) {
@@ -564,6 +623,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     },
     setScanMode(on) {
       scanOn = on;
+      goldie.visible = done && !on;
       emboss.setScanMode(on);
       ticket.plate.visible = on;
       glow.visible = !on;
@@ -577,9 +637,9 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   };
 }
 
-/** Free GPU resources this showcase owns (the shared toon/voxel materials and toon ramp are kept). */
+/** Free GPU resources this showcase owns (the shared toon material and toon ramp are kept). */
 function disposeTree(root: THREE.Object3D) {
-  const keep = new Set<THREE.Material>([toonMat(), voxelMaterial()]);
+  const keep = new Set<THREE.Material>([toonMat()]);
   const ramp = toonGradient();
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;

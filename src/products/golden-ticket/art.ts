@@ -1,7 +1,8 @@
 import { Painter, shade } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
 import { rng } from '../../engine/tween';
-import { VoxelGrid } from '../../engine/voxel';
+import { buddyPortrait, type BuddySpec, type Pose } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor } from '../types';
 
 export const INK = '#1d1b26';
@@ -16,13 +17,31 @@ export const TICKET_FLAVORS: Flavor[] = [
   { id: 'platinum', name: 'Platinum', c: { metal: '#cdd7df', metalHi: '#f7fbff', metalLo: '#8a97a4', metalInk: '#2c343d', card: '#dde5ec', cardScan: '#f4f8fb', emboss: '#0c0e12', embossScan: '#08090b', wrap: '#101318', wrapHi: '#1c222a', seal: '#1f3a6a' } },
 ];
 
-/** Paper wrapper art (front) in texture px. */
-export const WRAP = { w: 72, h: 80 };
+/** Paper wrapper art (front) in texture px, and the label window (for the sticker) on it. */
+export const WRAP = { w: 72, h: 80, winX: 14, winY: 51, winW: 44, winH: 22 };
 /** Ticket face art and where the QR panel (code + quiet zone) sits on it. */
 export const TICKET = { w: 160, h: 100, qrX: 65, qrY: 6, qrSize: 88 };
 
 // -------------------------------------------------------------------------------------------------
 // Sprites
+
+/** A mascot at packaging size: body, face and limbs shrink together (the pixel style stays). */
+function miniSpec(spec: BuddySpec, k: number): BuddySpec {
+  const L = spec.limbs ?? { color: '#58a88f', tip: '#f3d270' };
+  return {
+    ...spec,
+    body: { ...spec.body, w: Math.round(spec.body.w * k), h: Math.round(spec.body.h * k) },
+    eyes: { ...spec.eyes, gap: spec.eyes?.gap !== undefined ? spec.eyes.gap * k : undefined, r: spec.eyes?.r !== undefined ? Math.max(1.5, spec.eyes.r * k) : undefined },
+    mouth: { ...spec.mouth, w: spec.mouth?.w !== undefined ? Math.round(spec.mouth.w * k) : undefined },
+    limbs: { ...L, arm: Math.round((L.arm ?? 13) * k), leg: Math.round((L.leg ?? 9) * k), thick: Math.max(4, Math.round((L.thick ?? 6) * k)) },
+  };
+}
+
+/** Goldie, the star buddy, as a flat portrait (`k` = size; small ones leave the crown off, it doesn't shrink). */
+export function goldieArt(k: number, pose: Pose = {}, crown = k >= 0.8): Painter {
+  const spec = k === 1 ? CAST.goldie : miniSpec(CAST.goldie, k);
+  return buddyPortrait(crown ? spec : { ...spec, top: undefined }, pose).toPainter();
+}
 
 /** Little royal crown. ~17x12 px. */
 export function drawCrown(p: Painter, x: number, y: number, f: Flavor) {
@@ -99,35 +118,28 @@ function border(p: Painter, x: number, y: number, w: number, h: number, f: Flavo
 }
 
 export function wrapperFront(f: Flavor): Painter {
-  const { w, h } = WRAP;
+  const { w, h, winX, winY, winW, winH } = WRAP;
   const p = new Painter(w, h);
   damask(p, w, h, f);
   border(p, 2, 2, w - 4, h - 4, f);
-  drawCrown(p, w / 2 - 9.5, 6, f);
   const gold = { font: FONT_BIG, bold: true, color: f.c.metal, shadow: f.c.metalInk, shadowOffset: [0, 1] as [number, number], align: 'center' as const };
-  p.text('GOLDEN', w / 2, 21, gold);
-  p.text('TICKET', w / 2, 30, { ...gold, color: f.c.metalHi });
-  p.text('· ' + f.name.toUpperCase() + ' ·', w / 2, 39, { font: FONT_TINY, color: f.c.metal, align: 'center' });
-  // ribbon
-  const ry = 46;
-  p.poly([[5, ry + 1], [11, ry + 1], [11, ry + 8], [5, ry + 8], [8, ry + 4.5]], f.c.metalLo);
-  p.poly([[w - 5, ry + 1], [w - 11, ry + 1], [w - 11, ry + 8], [w - 5, ry + 8], [w - 8, ry + 4.5]], f.c.metalLo);
-  p.rect(9, ry - 1, w - 18, 9, INK);
-  p.rect(10, ry, w - 20, 7, f.c.metal);
-  p.rect(10, ry, w - 20, 1, f.c.metalHi);
-  p.text('LIMITED', w / 2, ry + 1, { font: FONT_TINY, color: INK, align: 'center' });
-  // wax seal
-  p.disc(w / 2, 61, 7.5, INK);
-  p.disc(w / 2, 61, 6.5, f.c.seal);
-  p.ring(w / 2, 61, 5, shade(f.c.seal, 0.15), 1);
-  p.text('★', w / 2 + 0.5, 59, { font: FONT_TINY, color: f.c.metal, align: 'center' });
-  p.text('No.', 10, 55, { font: FONT_TINY, color: f.c.metalLo });
-  p.text('001', 10, 61, { font: FONT_TINY, color: f.c.metal });
-  p.text('85G', w - 10, 55, { font: FONT_TINY, color: f.c.metalLo, align: 'right' });
-  p.text('70%', w - 10, 61, { font: FONT_TINY, color: f.c.metal, align: 'right' });
-  p.text('FINE CHOCOLATE', w / 2, 69, { font: FONT_TINY, color: f.c.metalLo, align: 'center' });
-  sparkle(p, 12, 12, f.c.metalHi);
-  sparkle(p, w - 12, 16, f.c.metalHi, true);
+  p.text('GOLDEN', w / 2, 5, gold);
+  p.text('TICKET', w / 2, 13, { ...gold, color: f.c.metalHi });
+  // goldie waving from the middle of the wrapper
+  const goldie = goldieArt(0.56, { armL: 0.5, armR: 2.5 });
+  p.blit(goldie, Math.round(w / 2 - goldie.w / 2), winY - 2 - goldie.h);
+  // label window: a gold frame around a ribbon and the wax seal (the sticker sits here in the shop)
+  p.rect(winX - 1, winY - 1, winW + 2, winH + 2, INK);
+  p.rect(winX, winY, winW, winH, f.c.metalLo);
+  p.rect(winX + 1, winY + 1, winW - 2, winH - 2, f.c.wrapHi);
+  p.rect(winX + 1, winY + 1, winW - 2, 1, f.c.metal);
+  p.disc(w / 2, winY + winH / 2, 7.5, INK);
+  p.disc(w / 2, winY + winH / 2, 6.5, f.c.seal);
+  p.ring(w / 2, winY + winH / 2, 5, shade(f.c.seal, 0.15), 1);
+  p.text('★', w / 2 + 0.5, winY + winH / 2 - 2, { font: FONT_TINY, color: f.c.metal, align: 'center' });
+  sparkle(p, 10, 26, f.c.metalHi);
+  sparkle(p, w - 10, 34, f.c.metalHi, true);
+  sparkle(p, 11, 44, f.c.metalHi);
   return p;
 }
 
@@ -317,16 +329,20 @@ export function runnerTop(f: Flavor, w = 174, h = 120): Painter {
 // -------------------------------------------------------------------------------------------------
 // Poster
 
-export const POSTER = { w: 120, h: 152, qrX: 20, qrY: 47, qrSize: 80 };
+export const POSTER = { w: 120, h: 166, qrX: 20, qrY: 62, qrSize: 80 };
 
 export function posterArt(f: Flavor): Painter {
   const { w, h, qrX, qrY, qrSize } = POSTER;
   const p = new Painter(w, h);
   damask(p, w, h, f);
   border(p, 3, 3, w - 6, h - 6, f);
-  drawCrown(p, w / 2 - 9.5, 8, f);
-  p.text('GOLDEN TICKET', w / 2, 24, { font: FONT_BIG, bold: true, color: f.c.metal, shadow: f.c.metalInk, shadowOffset: [0, 1], align: 'center' });
-  p.text('· ' + f.name.toUpperCase() + ' EDITION ·', w / 2, 33, { font: FONT_TINY, color: f.c.metalLo, align: 'center' });
+  // goldie cheering over the title, crown and all (as big as the space allows)
+  const titleY = qrY - 16;
+  const cheer: Pose = { armL: 2.6, armR: 2.6, eyes: 'happy', mouth: 'open' };
+  let goldie = goldieArt(0.7, cheer, true);
+  for (const k of [0.64, 0.58, 0.52]) if (goldie.h > titleY - 6) goldie = goldieArt(k, cheer, true);
+  p.blit(goldie, Math.round(w / 2 - goldie.w / 2), titleY - 1 - goldie.h);
+  p.text('GOLDEN TICKET', w / 2, titleY, { font: FONT_BIG, bold: true, color: f.c.metal, shadow: f.c.metalInk, shadowOffset: [0, 1], align: 'center' });
   // the ticket card holding the code
   const cx = qrX - 10;
   const cy = qrY - 6;
@@ -343,35 +359,4 @@ export function posterArt(f: Flavor): Painter {
   sparkle(p, w - 16, h - 12, f.c.metalHi, true);
   sparkle(p, 14, h - 16, f.c.metalHi);
   return p;
-}
-
-// -------------------------------------------------------------------------------------------------
-// Voxel display pedestal
-
-/** Black marble plinth with a gold ring and a velvet cushion with tassels (~21 x 8 x 21). */
-export function pedestalVoxels(f: Flavor): VoxelGrid {
-  const g = new VoxelGrid(23, 9, 23);
-  const c = 11.5;
-  const marble = '#1f1c26';
-  const vein = '#3a3544';
-  g.cylinder(c, c, 0, 3, 10.4, marble);
-  g.cylinder(c, c, 4, 4, 10.9, f.c.metal);
-  g.cylinder(c, c, 0, 0, 10.9, f.c.metalLo);
-  g.paint((x, y, z) => ((x * 7 + z * 3 + y * 5) % 11 === 0 ? vein : null));
-  // cushion
-  for (let z = 3; z < 20; z++)
-    for (let x = 3; x < 20; x++) {
-      const dx = Math.abs(x + 0.5 - c) / 8.5;
-      const dz = Math.abs(z + 0.5 - c) / 8.5;
-      const d = Math.max(dx, dz);
-      if (d > 1) continue;
-      const top = d < 0.55 ? 7 : d < 0.85 ? 6 : 5;
-      for (let y = 5; y <= top; y++) g.set(x, y, z, y === top && d < 0.3 ? '#b01a3c' : '#8e1030');
-    }
-  // tassels
-  for (const [x, z] of [[3, 3], [19, 3], [3, 19], [19, 19]]) {
-    g.box(x, 4, z, x, 5, z, f.c.metal);
-    g.set(x, 3, z, f.c.metalHi);
-  }
-  return g;
 }
