@@ -8,6 +8,8 @@ import { spriteMesh } from '../art/spriteMesh';
 import { iconBitmap } from '../art/icons';
 import { cactusSprite, plantSprite } from '../art/decor';
 import { drawLogo } from '../art/brand';
+import { Buddy } from '../art/buddy';
+import { CAST } from '../art/cast';
 import { Kit, PAL } from './kit';
 import { Stock } from './stock';
 import { Shoppers } from './npcs';
@@ -100,7 +102,7 @@ export class Store {
   private lastSection = '';
   private introCam = { pos: new THREE.Vector3(STORE.doorX, 2.2, STORE.frontZ + 10.5), look: new THREE.Vector3(STORE.doorX, 2.6, STORE.frontZ) };
   private tmp = new THREE.Vector3();
-  private promoters: { b: import('../art/buddy').Buddy; next: number }[] = [];
+  private promoters: { b: Buddy; next: number }[] = [];
   private street: Shoppers;
   private time = 0;
 
@@ -425,16 +427,12 @@ export class Store {
 
   /** A mascot buddy standing on a display, waving at passers-by. */
   private promoter(id: string, x: number, y: number, z: number) {
-    import('../art/cast').then(({ CAST }) => {
-      import('../art/buddy').then(({ Buddy }) => {
-        const spec = CAST[id];
-        if (!spec) return;
-        const b = new Buddy(spec, 72);
-        b.position.set(x, y, z);
-        this.scene.add(b);
-        this.promoters.push({ b, next: 2 + Math.random() * 3 });
-      });
-    });
+    const spec = CAST[id];
+    if (!spec) return;
+    const b = new Buddy(spec, 72);
+    b.position.set(x, y, z);
+    this.scene.add(b);
+    this.promoters.push({ b, next: 2 + Math.random() * 3 });
   }
 
   // -----------------------------------------------------------------------------------------------
