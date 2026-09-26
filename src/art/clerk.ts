@@ -417,7 +417,7 @@ export class Clerk {
     // ---- scanner beam (fan from the drill tip + bright line on the counter)
     const fanGeo = new THREE.BufferGeometry();
     fanGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3));
-    this.beamFan = new THREE.Mesh(fanGeo, new THREE.MeshBasicMaterial({ color: '#ff3048', transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide }));
+    this.beamFan = new THREE.Mesh(fanGeo, new THREE.MeshBasicMaterial({ color: '#ff3048', transparent: true, opacity: 0.4, depthWrite: false, side: THREE.DoubleSide }));
     const band = () => {
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3));
@@ -532,8 +532,8 @@ export class Clerk {
     this.receiptMat.needsUpdate = true;
     const img = tex.image as { width?: number; height?: number } | undefined;
     const aspect = img && img.width && img.height ? img.height / img.width : 2;
-    this.receiptW = 0.22;
-    this.receiptLen = clamp(this.receiptW * aspect, 0.26, 0.6);
+    this.receiptW = 0.25;
+    this.receiptLen = clamp(this.receiptW * aspect, 0.3, 0.6);
     this.receiptP = 0;
     this.receiptOut = true;
     this.receipt.visible = true;
@@ -616,9 +616,12 @@ export class Clerk {
     if (this.xfade > 0) {
       this.xfade = Math.max(0, this.xfade - dt);
       const w = sstep(0, XFADE, XFADE - this.xfade);
-      for (const k of BLEND_KEYS) P[k as BlendKey] = lerp(this.fromPose[k], P[k], w);
+      for (let i = 0; i < BLEND_KEYS.length; i++) {
+        const k: BlendKey = BLEND_KEYS[i];
+        P[k] = lerp(this.fromPose[k], P[k], w);
+      }
     }
-    for (const k of BLEND_KEYS) this.lastPose[k] = P[k];
+    for (let i = 0; i < BLEND_KEYS.length; i++) this.lastPose[BLEND_KEYS[i]] = P[BLEND_KEYS[i]];
     this.applyPose(P, dt);
     this.updateBubbles(dt);
     this.updateReceipt(dt);
@@ -1113,7 +1116,7 @@ export class Clerk {
   // bubbles
 
   private free(): Bubble | null {
-    for (const q of this.bubbles) if (!q.on) return q;
+    for (let i = 0; i < this.bubbles.length; i++) if (!this.bubbles[i].on) return this.bubbles[i];
     return null;
   }
 
@@ -1165,7 +1168,7 @@ export class Clerk {
 
   private updateBubbles(dt: number) {
     const sleepy = this.mood === 'sleepy';
-    if (this.pose.drillSpeed > 18) {
+    if (this.pose.drillSpeed > 24) {
       this.sparkIn -= dt;
       if (this.sparkIn <= 0) {
         this.sparkIn = 0.03 + this.rand() * 0.05;
@@ -1182,7 +1185,8 @@ export class Clerk {
     }
     const counts = this.counts;
     counts.fill(0);
-    for (const b of this.bubbles) {
+    for (let i = 0; i < this.bubbles.length; i++) {
+      const b = this.bubbles[i];
       if (!b.on) continue;
       b.age += dt;
       if (b.age > b.life + (b.spark ? 0 : 0.14)) {
@@ -1290,7 +1294,7 @@ export class Clerk {
     const tz = this.v1.z + 0.03;
     this.beamDot.position.set(tx, ty, tz + 0.01);
     this.beamDot.scale.setScalar(0.8 + Math.sin(this.time * 50) * 0.25);
-    const cx = tx - 0.16 + P.beamX;
+    const cx = tx - 0.3 + P.beamX;
     const cy = 0.958;
     const cz = 0.44;
     const hw = 0.17 * P.beam;
@@ -1301,6 +1305,6 @@ export class Clerk {
     fan.needsUpdate = true;
     this.setBand(this.beamLine, cx, cz, hw, 0.028, cy + 0.002);
     this.setBand(this.beamGlow, cx, cz, hw, 0.09, cy + 0.001);
-    (this.beamFan.material as THREE.MeshBasicMaterial).opacity = 0.26 + Math.sin(this.time * 40) * 0.07;
+    (this.beamFan.material as THREE.MeshBasicMaterial).opacity = 0.36 + Math.sin(this.time * 40) * 0.08;
   }
 }
