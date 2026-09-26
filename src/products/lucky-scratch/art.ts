@@ -1,6 +1,7 @@
 import { Painter, shade } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
-import { VoxelGrid } from '../../engine/voxel';
+import { buddyPortrait, type BuddySpec, type Pose } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor } from '../types';
 
 export const INK = '#1d1b26';
@@ -10,22 +11,22 @@ export const SCRATCH_FLAVORS: Flavor[] = [
   {
     id: 'gold',
     name: 'Gold Rush',
-    c: { main: '#f4c430', base: '#f4c430', light: '#ffe27a', dark: '#c8930f', deep: '#7a4a06', ribbon: '#e63946', ribbonDark: '#a4161a', win: '#e63946', collar: '#e63946', motif: 'cat' },
+    c: { main: '#f4c430', base: '#f4c430', light: '#ffe27a', dark: '#c8930f', deep: '#7a4a06', ribbon: '#e63946', ribbonDark: '#a4161a', win: '#e63946' },
   },
   {
     id: 'jade',
     name: 'Jade Luck',
-    c: { main: '#2a9d8f', base: '#2a9d8f', light: '#5cc9b5', dark: '#1d7268', deep: '#0f3f3a', ribbon: '#f4c430', ribbonDark: '#b8860b', win: '#ffd23f', collar: '#2ec27e', motif: 'clover' },
+    c: { main: '#2a9d8f', base: '#2a9d8f', light: '#5cc9b5', dark: '#1d7268', deep: '#0f3f3a', ribbon: '#f4c430', ribbonDark: '#b8860b', win: '#ffd23f' },
   },
   {
     id: 'ruby',
     name: 'Ruby Seven',
-    c: { main: '#d62839', base: '#d62839', light: '#ff5d6c', dark: '#a0172a', deep: '#5c0a17', ribbon: '#ffd23f', ribbonDark: '#c8930f', win: '#ffd23f', collar: '#d62839', motif: 'seven' },
+    c: { main: '#d62839', base: '#d62839', light: '#ff5d6c', dark: '#a0172a', deep: '#5c0a17', ribbon: '#ffd23f', ribbonDark: '#c8930f', win: '#ffd23f' },
   },
 ];
 
-/** Card front layout in texture pixels. The foil panel hides the QR. */
-export const CARD = { w: 96, h: 136, panelX: 16, panelY: 39, panelSize: 64 };
+/** Card front layout in texture pixels. The foil panel hides the QR; the lucky buddy stands below it. */
+export const CARD = { w: 96, h: 148, panelX: 16, panelY: 39, panelSize: 64 };
 
 const FOIL = { base: '#c3c9d3', light: '#e3e7ee', dark: '#8e95a3', deep: '#6b7280' };
 
@@ -39,93 +40,21 @@ function sunburst(p: Painter, cx: number, cy: number, n: number, c1: string, c2:
   }
 }
 
-/** Beckoning lucky cat face (maneki-neko), 20×18. */
-function catIcon(collar: string): Painter {
-  const L = new Painter(20, 19);
-  L.poly([[2.5, 9], [3.5, 0.5], [9.5, 5]], '#ffffff');
-  L.poly([[17.5, 9], [16.5, 0.5], [10.5, 5]], '#ffffff');
-  L.poly([[4, 6], [4.5, 2.5], [7.5, 5]], '#ff9fb4');
-  L.ellipse(10, 10.5, 8.2, 6.6, '#ffffff');
-  L.poly([[17.5, 9], [16.5, 0.5], [12, 4.2], [14, 7]], '#f4a340');
-  L.poly([[16, 6], [15.5, 2.5], [13, 5]], '#ff9fb4');
-  L.rect(4, 16, 12, 2, collar);
-  L.outline(INK);
-  // closed happy eyes, nose, mouth, cheeks, bell
-  L.px(5, 10, INK).px(6, 9, INK).px(7, 9, INK).px(8, 10, INK);
-  L.px(12, 10, INK).px(13, 9, INK).px(14, 9, INK).px(15, 10, INK);
-  L.px(10, 12, '#ff6f91');
-  L.px(9, 13, INK).px(11, 13, INK).px(10, 14, INK);
-  L.px(4, 12, '#ffb3c6').px(16, 12, '#ffb3c6');
-  L.disc(10, 17.5, 1.6, '#ffd23f');
-  L.px(10, 18, '#b8860b');
-  return L;
-}
-
-/** Four-leaf clover, 19×19: four heart leaves, each outlined so they read separately. */
-function cloverIcon(): Painter {
-  const L = new Painter(19, 19);
-  const g = '#3ddc84';
-  const gl = '#9af5bf';
-  const gd = '#1e9e57';
-  L.thickLine(9.5, 11, 14.5, 17.5, 0.7, gd);
-  L.outline(INK);
-  const leaf = (dx: number, dy: number) => {
-    const P = new Painter(19, 19);
-    // heart pointing at the centre (9.5, 9.5)
-    const cx = 9.5 + dx * 4.6;
-    const cy = 9.5 + dy * 4.6;
-    const px = -dy;
-    const py = dx;
-    P.disc(cx + px * 1.9 + dx * 0.6, cy + py * 1.9 + dy * 0.6, 2.5, g);
-    P.disc(cx - px * 1.9 + dx * 0.6, cy - py * 1.9 + dy * 0.6, 2.5, g);
-    P.poly([[cx + px * 4.2, cy + py * 4.2], [cx - px * 4.2, cy - py * 4.2], [9.5 + dx * 0.8, 9.5 + dy * 0.8]], g);
-    P.px(cx + px * 1.6 + dx * 1.2, cy + py * 1.6 + dy * 1.2, gl);
-    P.outline(INK);
-    L.blit(P, 0, 0);
+/** A mascot at packaging size: body, face and limbs shrink together (the pixel style stays). */
+function miniSpec(spec: BuddySpec, k: number): BuddySpec {
+  const L = spec.limbs ?? { color: '#58a88f', tip: '#f3d270' };
+  return {
+    ...spec,
+    body: { ...spec.body, w: Math.round(spec.body.w * k), h: Math.round(spec.body.h * k) },
+    eyes: { ...spec.eyes, gap: spec.eyes?.gap !== undefined ? spec.eyes.gap * k : undefined, r: spec.eyes?.r !== undefined ? Math.max(1.5, spec.eyes.r * k) : undefined },
+    mouth: { ...spec.mouth, w: spec.mouth?.w !== undefined ? Math.round(spec.mouth.w * k) : undefined },
+    limbs: { ...L, arm: Math.round((L.arm ?? 13) * k), leg: Math.round((L.leg ?? 9) * k), thick: Math.max(4, Math.round((L.thick ?? 6) * k)) },
   };
-  leaf(0, -1);
-  leaf(-1, 0);
-  leaf(1, 0);
-  leaf(0, 1);
-  L.px(9, 9, gd).px(10, 9, gd).px(9, 10, gd).px(10, 10, gd);
-  return L;
 }
 
-function sevenIcon(): Painter {
-  const L = new Painter(20, 19);
-  L.text('7', 10, 2, { font: FONT_BIG, scale: 2, bold: true, color: '#ff3b4e', align: 'center' });
-  L.outline('#ffd23f');
-  L.outline(INK);
-  L.px(6, 5, '#ffb3bb').px(7, 5, '#ffb3bb');
-  return L;
-}
-
-function cherryIcon(): Painter {
-  const L = new Painter(20, 19);
-  L.thickLine(6, 12, 11, 3, 0.6, '#2e8b57');
-  L.thickLine(14, 13, 11, 3, 0.6, '#2e8b57');
-  L.ellipse(13.5, 4, 3, 1.6, '#3ddc84');
-  L.disc(6, 13, 4, '#e63946');
-  L.disc(14, 14, 4, '#e63946');
-  L.outline(INK);
-  L.px(4, 11, '#ffffff').px(12, 12, '#ffffff').px(5, 11, '#ffb3bb');
-  return L;
-}
-
-function coinIcon(): Painter {
-  const L = new Painter(18, 18);
-  L.disc(9, 9, 7.5, '#f2b705');
-  L.disc(9, 9, 5.5, '#ffd84d');
-  L.outline(INK);
-  L.star(9, 9.4, 4, 1.8, 5, '#f2b705');
-  L.px(6, 5, '#fff3b0').px(7, 4, '#fff3b0');
-  return L;
-}
-
-export function motifIcons(f: Flavor): [Painter, Painter] {
-  if (f.c.motif === 'clover') return [cloverIcon(), cloverIcon()];
-  if (f.c.motif === 'seven') return [sevenIcon(), cherryIcon()];
-  return [catIcon(f.c.collar), coinIcon()];
+/** Lucky, the coin buddy, as a flat portrait (`k` = size relative to the full mascot). */
+export function luckyArt(k: number, pose: Pose = {}): Painter {
+  return buddyPortrait(k === 1 ? CAST.lucky : miniSpec(CAST.lucky, k), pose).toPainter();
 }
 
 function sparkle(p: Painter, x: number, y: number, c = '#ffffff') {
@@ -167,15 +96,15 @@ export interface CardArtOptions {
   scraps?: boolean;
 }
 
-/** Front of the lottery card (96×136). */
+/** Front of the lottery card (96×148). */
 export function cardFront(f: Flavor, opts: CardArtOptions = {}): Painter {
   const { w, h, panelX, panelY, panelSize } = CARD;
   const c = f.c;
   const p = new Painter(w, h);
   sunburst(p, w / 2, panelY + panelSize / 2, 20, c.base, c.light);
-  // stub strip with serial number + perforation
+  // stub strip with a row of tiny stars + perforation
   p.rect(0, 0, w, 10, c.deep);
-  p.text('No. 0777-2046-QR', w / 2, 3, { font: FONT_TINY, color: CREAM, align: 'center' });
+  for (let x = 10; x < w; x += 19) sparkle(p, x, 5, x % 2 ? c.light : CREAM);
   for (let x = 1; x < w; x += 3) p.rect(x, 10, 2, 1, INK);
   p.rect(0, 11, w, 1, shade(c.base, 0.25));
 
@@ -215,29 +144,23 @@ export function cardFront(f: Flavor, opts: CardArtOptions = {}): Painter {
   sparkle(p, panelX + panelSize + 7, panelY + 44, '#ffffff');
   sparkle(p, panelX - 7, panelY + 52, CREAM);
 
-  // bottom strip: barcode, lotto name, price badge (12 px)
+  // bottom strip with the lotto name and the price badge (12 px)
   const by = h - 12;
   p.rect(0, by, w, 12, shade(c.deep, 0.05));
   p.rect(0, by, w, 1, INK);
-  p.rect(4, by + 2, 28, 8, CREAM);
-  let bs = 7;
-  for (let x = 6; x < 30; ) {
-    bs = (bs * 16807) % 2147483647;
-    const bw = 1 + (bs % 2);
-    p.rect(x, by + 3, bw, 6, INK);
-    x += bw + 1 + ((bs >> 3) % 2);
-  }
-  p.text('QR LOTTO', 55, by + 4, { font: FONT_TINY, color: CREAM, align: 'center' });
+  p.text('QR LOTTO', 60, by + 4, { font: FONT_TINY, color: CREAM, align: 'center' });
 
-  // WIN! row with motif icons, between the panel and the strip
-  const wy = panelY + panelSize + 3;
-  const [ma, mb] = motifIcons(f);
-  p.blit(ma, 4, wy - 1);
-  p.blit(mb, w - mb.w - 4, wy - 1);
-  p.roundRect(26, wy, 45, 18, 4, INK);
-  p.roundRect(27, wy + 1, 43, 16, 3, c.deep);
-  p.rect(30, wy + 1, 37, 1, shade(c.deep, 0.2));
-  p.text('WIN!', w / 2 + 1, wy + 2, { font: FONT_BIG, scale: 2, color: '#ffd23f', shadow: INK, shadowOffset: [0, 1], align: 'center' });
+  // lucky, the coin buddy, beckoning below the panel (feet on the strip)
+  const wy = panelY + panelSize + 4;
+  const lucky = luckyArt(0.6, { armL: 0.45, armR: 2.7 });
+  p.blit(lucky, 2, Math.max(wy, h - 3 - lucky.h));
+  // WIN! badge beside the buddy
+  const bx = 40;
+  const bw = w - bx - 6;
+  p.roundRect(bx, wy + 4, bw, 18, 4, INK);
+  p.roundRect(bx + 1, wy + 5, bw - 2, 16, 3, c.deep);
+  p.rect(bx + 4, wy + 5, bw - 8, 1, shade(c.deep, 0.2));
+  p.text('WIN!', bx + bw / 2 + 1, wy + 6, { font: FONT_BIG, scale: 2, color: '#ffd23f', shadow: INK, shadowOffset: [0, 1], align: 'center' });
   // price sticker overlapping the strip
   p.burst(w - 11, by + 5, 8, 12, INK);
   p.burst(w - 11, by + 5, 7, 12, c.ribbon);
@@ -282,130 +205,4 @@ export function winSticker(f: Flavor): Painter {
   p.text('WIN!', 22, 8, { font: FONT_BIG, bold: true, color: '#ffffff', outline: INK, shadow: INK, shadowOffset: [0, 1], align: 'center' });
   p.text('QR', 22, 18, { font: FONT_TINY, color: INK, align: 'center' });
   return p;
-}
-
-// ---------------------------------------------------------------------------------------------
-// Voxel props
-
-/** Gold coin standing in the XY plane (face towards +Z). */
-export function coinVoxels(): VoxelGrid {
-  const R = 7;
-  const g = new VoxelGrid(R * 2 + 1, R * 2 + 1, 3);
-  const rim = '#c8930f';
-  const face = '#f7c948';
-  const hi = '#ffe88a';
-  for (let y = 0; y <= R * 2; y++)
-    for (let x = 0; x <= R * 2; x++) {
-      const d = Math.hypot(x - R, y - R);
-      if (d > R + 0.3) continue;
-      const edge = d > R - 1.2;
-      for (let z = 0; z < 3; z++) g.set(x, y, z, edge ? rim : face);
-    }
-  // embossed star on both faces
-  const star = [
-    '...#...',
-    '...#...',
-    '..###..',
-    '#######',
-    '.#####.',
-    '..###..',
-    '.##.##.',
-    '.#...#.',
-  ];
-  for (let r = 0; r < star.length; r++)
-    for (let cc = 0; cc < star[r].length; cc++) {
-      if (star[r][cc] !== '#') continue;
-      const x = R - 3 + cc;
-      const y = R + 4 - r;
-      g.set(x, y, 0, hi);
-      g.set(x, y, 2, hi);
-    }
-  return g;
-}
-
-/** Card holder: a low slab with a riser behind the card (so nothing hides the card's bottom). */
-export function standVoxels(f: Flavor): VoxelGrid {
-  const g = new VoxelGrid(36, 4, 10);
-  const body = f.c.deep;
-  const trim = f.c.light;
-  g.box(0, 0, 0, 35, 1, 9, body);
-  g.box(0, 1, 9, 35, 1, 9, trim);
-  g.box(0, 0, 9, 35, 0, 9, shade(body, -0.15));
-  g.box(1, 2, 0, 34, 3, 3, shade(body, 0.06));
-  g.box(1, 3, 3, 34, 3, 3, trim);
-  for (const x of [3, 32]) g.box(x, 0, 9, x + 1, 0, 9, '#ffd23f');
-  return g;
-}
-
-/** Box with its 12 edges rounded off (r in voxels). */
-function roundBox(g: VoxelGrid, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: string, r = 1) {
-  for (let z = z0; z <= z1; z++)
-    for (let y = y0; y <= y1; y++)
-      for (let x = x0; x <= x1; x++) {
-        const dx = Math.max(x0 + r - x, 0, x - (x1 - r));
-        const dy = Math.max(y0 + r - y, 0, y - (y1 - r));
-        const dz = Math.max(z0 + r - z, 0, z - (z1 - r));
-        if (dx * dx + dy * dy + dz * dz <= r * r + 0.01) g.set(x, y, z, color);
-      }
-}
-
-/** Grid size of the lucky cat, and where its raised arm attaches. */
-export const CAT = { sx: 26, sy: 27, sz: 14, shoulder: [19.5, 9, 7.5] as [number, number, number] };
-
-/** Maneki-neko (lucky cat) sitting, facing +Z. The beckoning arm is a separate grid. */
-export function catVoxels(collar: string): VoxelGrid {
-  const g = new VoxelGrid(CAT.sx, CAT.sy, CAT.sz);
-  const W = '#fbfaf5';
-  const shadeW = '#ece6dc';
-  const orange = '#f4a340';
-  const black = '#3a3440';
-  const pink = '#ff9fb4';
-  // body: wide at the bottom, then the head (mirror axis x = 13)
-  roundBox(g, 6, 0, 2, 19, 4, 11, W, 2);
-  roundBox(g, 7, 3, 3, 18, 10, 11, W, 2);
-  g.box(7, 0, 3, 18, 0, 10, shadeW);
-  roundBox(g, 5, 10, 2, 20, 22, 12, W, 2);
-  // ears (triangles, pink inside)
-  const ear = (xs: number[][]) => xs.forEach(([x0, x1], i) => g.box(x0, 21 + i, 6, x1, 21 + i, 9, W));
-  ear([[7, 10], [7, 10], [7, 9], [7, 8], [7, 7]]);
-  ear([[15, 18], [15, 18], [16, 18], [17, 18], [18, 18]]);
-  g.box(8, 22, 9, 9, 22, 9, pink).set(8, 23, 9, pink);
-  g.box(16, 22, 9, 17, 22, 9, pink).set(17, 23, 9, pink);
-  // calico patches
-  g.paint((x, y) => (x <= 10 && y >= 19 ? orange : null));
-  g.paint((x, y) => (x >= 16 && y >= 22 ? black : null));
-  g.paint((x, y, z) => (x >= 16 && y >= 2 && y <= 7 && z <= 8 ? orange : null));
-  g.paint((x, y, z) => (x <= 7 && y >= 4 && y <= 6 && z <= 6 ? black : null));
-  // face painted on the flat front (z = 12)
-  const face = (pts: number[][], c: string) => pts.forEach(([x, y]) => g.filled(x, y, 12) && g.set(x, y, 12, c));
-  face([[8, 17], [9, 18], [10, 17], [15, 17], [16, 18], [17, 17]], INK); // happy ^ ^ eyes
-  face([[12, 15], [13, 15]], '#ff6f91'); // nose
-  face([[10, 14], [12, 14], [13, 14], [15, 14], [11, 13], [14, 13]], INK); // ω mouth
-  face([[7, 15], [8, 15], [17, 15], [18, 15]], '#ffb3c6'); // cheeks
-  face([[6, 14], [19, 14], [6, 16], [19, 16]], '#a79fae'); // whisker tips
-  // collar + bell
-  g.paint((_x, y) => (y === 10 ? collar : null));
-  g.box(12, 8, 12, 13, 9, 13, '#ffd23f');
-  g.box(12, 8, 13, 13, 8, 13, '#c8930f');
-  // koban coin held against the belly by the other paw
-  roundBox(g, 8, 2, 12, 12, 8, 12, '#f7c948', 1);
-  g.box(9, 3, 12, 11, 7, 12, '#ffe88a');
-  g.box(10, 3, 12, 10, 7, 12, '#e0a21b');
-  roundBox(g, 11, 4, 11, 14, 6, 13, W, 1);
-  g.set(12, 5, 13, pink);
-  // tail curling up at the back
-  g.box(15, 1, 1, 19, 2, 2, W).box(19, 2, 1, 20, 6, 2, orange).box(20, 6, 1, 20, 7, 2, orange);
-  return g;
-}
-
-/** The raised beckoning arm. Mesh origin = grid corner; the shoulder is grid (0.5, 0, 2.5). */
-export function catArmVoxels(): VoxelGrid {
-  const g = new VoxelGrid(6, 11, 5);
-  const W = '#fbfaf5';
-  g.box(0, 0, 1, 2, 3, 3, W);
-  g.box(1, 3, 1, 3, 6, 3, W);
-  roundBox(g, 1, 6, 0, 5, 10, 4, W, 1);
-  // paw pad facing forward
-  g.set(3, 7, 4, '#ff9fb4').set(2, 9, 4, '#ff9fb4').set(4, 9, 4, '#ff9fb4');
-  return g;
 }

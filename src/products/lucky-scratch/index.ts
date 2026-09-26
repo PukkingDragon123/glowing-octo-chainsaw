@@ -1,13 +1,17 @@
 import * as THREE from 'three';
-import { toonGradient, voxelMesh } from '../../engine/voxel';
+import { toonGradient } from '../../engine/voxel';
 import { ease } from '../../engine/tween';
 import { audio } from '../../engine/audio';
+import { Painter, shade } from '../../engine/Painter';
+import { Kit } from '../../store/kit';
+import { Buddy } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor, ProductContext, ProductDef, ShowcaseItem } from '../types';
 import { atlasBox } from '../common/box';
 import { qrDecal } from '../common/qrLayout';
 import { Particles } from '../common/props';
 import { composePoster, posterScale } from '../common/poster';
-import { CAT, CARD, INK, SCRATCH_FLAVORS, cardBack, cardEdge, cardFront, catArmVoxels, catVoxels, coinVoxels, foilArt, standVoxels, winSticker } from './art';
+import { CARD, INK, SCRATCH_FLAVORS, cardBack, cardEdge, cardFront, foilArt, winSticker } from './art';
 
 const CARD_W = 1.5;
 const PX = CARD_W / CARD.w;
@@ -21,9 +25,8 @@ const PANEL_CX = -CARD_W / 2 + (CARD.panelX + N / 2) * PX;
 const PANEL_CY = CARD_H - (CARD.panelY + N / 2) * PX;
 const DECAL_Z = CARD_D / 2 + 0.003;
 const FOIL_Z = CARD_D / 2 + 0.006;
-const COIN_SCALE = 0.024;
-const COIN_R = 7.5 * COIN_SCALE;
-const COIN_T = 3 * COIN_SCALE;
+const COIN_R = 0.18;
+const COIN_T = 0.072;
 /** Share of the foil that has to be scratched before the rest flakes off by itself. */
 const WIN_SHARE = 0.7;
 const FOIL_EDGE = '#7d8594';
@@ -42,6 +45,37 @@ function withMipmaps(obj: THREE.Object3D) {
   return obj;
 }
 
+/** Card holder: a soft rounded slab with a riser behind the card and little gold studs. */
+function standModel(f: Flavor, s = 1) {
+  const k = new Kit();
+  const body = f.c.deep;
+  k.rbox(1.8 * s, 0.1 * s, 0.5 * s, 0.045 * s, body, 0, 0, 0);
+  k.rbox(1.74 * s, 0.03 * s, 0.05 * s, 0.014 * s, f.c.light, 0, 0.065 * s, 0.235 * s);
+  k.rbox(1.7 * s, 0.11 * s, 0.2 * s, 0.045 * s, shade(body, 0.06), 0, 0.08 * s, -0.15 * s);
+  k.rbox(1.64 * s, 0.025 * s, 0.14 * s, 0.012 * s, f.c.light, 0, 0.18 * s, -0.15 * s);
+  for (const x of [-0.78, 0.78]) k.sphere(0.04 * s, '#ffd23f', x * s, 0.05 * s, 0.25 * s, 0.8);
+  return k.build();
+}
+
+/** Gold coin standing in the XY plane (faces towards ±Z), stamped with a star on both faces. */
+function coinModel() {
+  const face = new Painter(32, 32);
+  face.clear('#c8930f');
+  face.disc(16, 16, 15, '#e0a21b');
+  face.disc(16, 16, 12.5, '#f7c948');
+  face.star(16, 16.6, 8, 3.4, 5, '#ffe88a');
+  face.star(16, 16.6, 5.5, 2.3, 5, '#f7c948');
+  face.px(10, 8, '#fff6c8').px(11, 7, '#fff6c8');
+  const faceMat = new THREE.MeshToonMaterial({ map: face.texture(), gradientMap: toonGradient() });
+  const rimMat = new THREE.MeshToonMaterial({ color: '#d9a21e', gradientMap: toonGradient() });
+  const geo = new THREE.CylinderGeometry(COIN_R, COIN_R, COIN_T, 28);
+  geo.rotateX(Math.PI / 2);
+  const m = new THREE.Mesh(geo, [rimMat, faceMat, faceMat]);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+
 function cardBody(f: Flavor, scale: number, foil: boolean, mip: boolean) {
   const edge = cardEdge(f).canvas;
   const body = atlasBox(CARD_W * scale, CARD_H * scale, CARD_D * scale, { px: edge, nx: edge, py: edge, ny: edge, pz: cardFront(f, { foil }).canvas, nz: cardBack(f).canvas }, { mipmaps: mip });
@@ -54,8 +88,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   const root = new THREE.Group();
 
   // --- holder block + leaning card
-  const stand = voxelMesh(standVoxels(f), { scale: 0.05, anchor: 'bottom-center' });
-  root.add(stand);
+  root.add(standModel(f));
   const cardPivot = new THREE.Group();
   cardPivot.position.set(0, 0.1, 0.03);
   cardPivot.rotation.x = -LEAN;
@@ -88,8 +121,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   cardPivot.add(sticker);
 
   // --- coins: a little stack + the scratching coin
-  const coinGrid = coinVoxels();
-  const coinProto = voxelMesh(coinGrid, { scale: COIN_SCALE, anchor: 'center' });
+  const coinProto = coinModel();
   const stackPos = new THREE.Vector3(1.28, 0, 0.5);
   for (let k = 0; k < 3; k++) {
     const c = new THREE.Mesh(coinProto.geometry, coinProto.material);
@@ -105,21 +137,13 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   coin.quaternion.copy(coinRestQ);
   root.add(coin);
 
-  // --- lucky cat
-  const cat = new THREE.Group();
-  const catScale = 0.032;
-  const catBody = voxelMesh(catVoxels(f.c.collar), { scale: catScale, anchor: 'bottom-center' });
-  cat.add(catBody);
-  const armPivot = new THREE.Group();
-  const [shx, shy, shz] = CAT.shoulder;
-  armPivot.position.set((shx - CAT.sx / 2) * catScale, shy * catScale, (shz - CAT.sz / 2) * catScale);
-  const arm = voxelMesh(catArmVoxels(), { scale: catScale, anchor: 'corner' });
-  arm.position.set(-0.5 * catScale, 0, -2.5 * catScale);
-  armPivot.add(arm);
-  cat.add(armPivot);
-  cat.position.set(-1.45, 0, 0.3);
-  cat.rotation.y = 0.45;
-  root.add(cat);
+  // --- lucky, the coin buddy, beckons beside the card and cheers when the code shows
+  const lucky = new Buddy(CAST.lucky, 64);
+  lucky.billboard = true;
+  const luckyHome = new THREE.Vector3(-1.5, 0, 0.35);
+  lucky.position.copy(luckyHome);
+  root.add(lucky);
+  let luckyNext = 1.5;
 
   const fx = new Particles(360);
   fx.floorY = 0.005;
@@ -193,6 +217,14 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
 
   let celebrate = 0;
   let scanMode = false;
+  /** Lucky jumps for joy and cheers. */
+  function luckyParty() {
+    void lucky.cheer();
+    void tweens.tween(0.55, (t) => (lucky.position.y = luckyHome.y + Math.sin(t * Math.PI) * 0.35), ease.outQuad, tg).then(() => {
+      lucky.position.y = luckyHome.y;
+      void lucky.cheer();
+    });
+  }
   function popSticker(animated: boolean) {
     sticker.visible = true;
     if (!animated) {
@@ -214,6 +246,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     audio.play('tada');
     fx.burst(texelToRoot(N / 2, -6, _v, 0.2), { count: 70, color: CONFETTI, speed: 2.2, up: 3.2, size: 0.05, life: 1.4 });
     celebrate = 2.5;
+    luckyParty();
     popSticker(true);
     // quick sweeping wipe of the leftovers
     let col = -8;
@@ -263,6 +296,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
       coin.position.copy(coinRest);
       coin.quaternion.copy(coinRestQ);
       celebrate = 1.5;
+      luckyParty();
       audio.play('ding');
       return;
     }
@@ -363,6 +397,8 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     finish,
     actionLabel: 'Scratch it!',
     hero: { target: new THREE.Vector3(0.0, 0.95, 0.1), distance: 5.4, yaw: 0.08, pitch: 0.3 },
+    // over the silver scratch panel: that's where the code will be
+    label: { object: cardPivot, position: new THREE.Vector3(PANEL_CX, PANEL_CY, FOIL_Z + 0.003), size: [0.84, 0.5] },
     pointer(kind, hit, ray) {
       if (kind === 'up') {
         const was = scratching;
@@ -387,13 +423,17 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
       }
       return true;
     },
-    update(dt) {
+    update(dt, _time, camera) {
       time += dt;
       fx.update(dt);
+      lucky.update(dt, camera);
       if (celebrate > 0) celebrate -= dt;
-      const happy = celebrate > 0;
-      armPivot.rotation.x = 0.05 + Math.max(0, Math.sin(time * (happy ? 12 : 3.2))) * (happy ? 0.8 : 0.5);
-      cat.position.y = happy ? Math.abs(Math.sin(time * 9)) * 0.12 : 0;
+      luckyNext -= dt;
+      if (luckyNext < 0 && celebrate <= 0 && !scanMode) {
+        // beckoning, like a proper lucky charm
+        luckyNext = 3 + Math.random() * 3;
+        void (foilGone && Math.random() < 0.4 ? lucky.hop() : lucky.wave());
+      }
       if (sticker.visible && !scanMode) sticker.rotation.z = -0.22 + Math.sin(time * 2.4) * 0.06;
       if (!revealing && !scratching && !foilGone) coin.position.y = coinRest.y + Math.max(0, Math.sin(time * 2.2)) * 0.015;
     },
@@ -406,6 +446,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     },
     setScanMode(on) {
       scanMode = on;
+      lucky.visible = !on;
       if (on && !foilGone) finish();
     },
     dispose() {
@@ -428,12 +469,11 @@ export const luckyScratch: ProductDef = {
   section: 'counter',
   price: 50,
   flavors: SCRATCH_FLAVORS,
-  shelfSize: [0.34, 0.44],
+  shelfSize: [0.34, 0.47],
   shelfModel(f) {
     const s = 0.19;
     const g = new THREE.Group();
-    const stand = voxelMesh(standVoxels(f), { scale: 0.05 * s, anchor: 'bottom-center' });
-    g.add(stand);
+    g.add(standModel(f, s));
     const pivot = new THREE.Group();
     pivot.position.set(0, 0.1 * s, 0.03 * s);
     pivot.rotation.x = -LEAN;
