@@ -212,7 +212,7 @@ export function iceTile(): Painter {
 
 export const POSTER = { w: 144, h: 176, codeX: 36, codeY: 52, codeSize: 72 };
 
-/** Poster: a frosty tray seen from above, the bag and the penguin cheering. Code region reserved. */
+/** Poster: a frosty tray seen from above with cubey cheering. Code region reserved. */
 export function posterArt(f: Flavor): Painter {
   const { w, h } = POSTER;
   const p = new Painter(w, h);
@@ -231,9 +231,11 @@ export function posterArt(f: Flavor): Painter {
   // spare cubes scattered around the tray
   const set = iceSet(f);
   for (const [cx, cy] of [[20, 132], [28, 138], [120, 60], [126, 70], [116, 140]] as const) drawCube(p, cx, cy, 7, set[Math.floor(r() * set.length)].fun);
-  // cubey cheering in the corner
-  const cubey = cubeyArt(0.75, { armL: 2.6, armR: 2.6, eyes: 'happy', mouth: 'open' });
-  p.blit(cubey, w - 2 - cubey.w, h - 17 - cubey.h);
+  // cubey cheering in the corner, standing on the ribbon and clear of the code square
+  const cubey = cubeyArt(0.64, { armL: 2.6, armR: 2.6, eyes: 'happy', mouth: 'open' });
+  const cy = h - 16 - cubey.h;
+  const cx = cy < codeY + codeSize + 1 ? Math.max(w - 1 - cubey.w, codeX + codeSize + 1) : w - 2 - cubey.w;
+  p.blit(cubey, cx, cy);
   // badge
   p.burst(16, 46, 12, 12, INK);
   p.burst(16, 46, 11, 12, f.c.accent);

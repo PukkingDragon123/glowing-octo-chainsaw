@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { Painter, shade } from '../../engine/Painter';
 import { ease, rng } from '../../engine/tween';
 import { audio } from '../../engine/audio';
-import { toonGradient, voxelMaterial, voxelMesh } from '../../engine/voxel';
+import { toonGradient } from '../../engine/voxel';
+import { Buddy } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import { LAYER_NO_OUTLINE } from '../../engine/PixelRenderer';
 import type { Flavor, ProductContext, ProductDef, ShowcaseItem } from '../types';
 import { atlasBox } from '../common/box';
@@ -10,7 +12,7 @@ import { layoutModules, orderSpots } from '../common/qrLayout';
 import { QRSwarm, isStructural } from '../common/swarm';
 import { Particles } from '../common/props';
 import { composePoster, posterScale } from '../common/poster';
-import { bagBack, bagFront, bagSide, crimpStrip, frostTile, FROSTY_FLAVORS, iceSet, iceTile, penguinVoxels, POSTER, posterArt } from './art';
+import { bagBack, bagFront, bagSide, crimpStrip, frostTile, FROSTY_FLAVORS, iceSet, iceTile, POSTER, posterArt } from './art';
 
 const SIZE = { w: 1.3, h: 1.7, d: 0.44 };
 
@@ -138,14 +140,12 @@ function frostTray(size: number) {
 }
 
 function disposeTree(root: THREE.Object3D) {
-  const shared = voxelMaterial();
   const grad = toonGradient();
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (mesh.geometry) mesh.geometry.dispose();
     const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
     for (const m of mats) {
-      if (m === shared) continue;
       const map = (m as THREE.MeshToonMaterial).map;
       if (map && map !== grad) map.dispose();
       m.dispose();
@@ -179,12 +179,13 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   pivot.rotation.y = 0.45;
   root.add(pivot);
 
-  // --- penguin buddy
-  const penguin = voxelMesh(penguinVoxels(f), { scale: 0.036, anchor: 'bottom-center' });
-  const penguinHome = new THREE.Vector3(2.1, 0, -0.5);
-  penguin.position.copy(penguinHome);
-  penguin.rotation.y = -0.55;
-  root.add(penguin);
+  // --- cubey, the ice-cube buddy, waits beside the tray and cheers when the code is done
+  const cubey = new Buddy(CAST.cubey, 64);
+  cubey.billboard = true;
+  const cubeyHome = new THREE.Vector3(2.15, 0, -0.35);
+  cubey.position.copy(cubeyHome);
+  root.add(cubey);
+  let cubeyNext = 2.5;
 
   // --- ice cubes: one per dark module
   const quiet = 2;
@@ -241,7 +242,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
 
   let time = 0;
   let idle = true;
-  let cheer = false;
+  let done = false;
   let scan = false;
   const spout = new THREE.Vector3();
   const dir = new THREE.Vector3();
@@ -254,16 +255,17 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   async function reveal() {
     tweens.cancel(tg);
     idle = false;
-    cheer = false;
+    done = false;
     swarm.hideAll();
     if (bag.inner) bag.inner.count = innerCount;
     bag.topCrimp.visible = true;
     bag.topCrimp.position.set(0, bag.h + 0.045, 0);
     bag.topCrimp.rotation.set(0, 0, 0);
     bag.group.scale.set(1, 1, 1);
-    penguin.position.copy(penguinHome);
-    penguin.rotation.set(0, -0.55, 0);
+    cubey.position.copy(cubeyHome);
+    cubey.scale.setScalar(1);
     // brrr: the bag shivers
+    void cubey.nod();
     audio.play('crunch');
     await tweens.tween(0.55, (t) => {
       pivot.rotation.z = Math.sin(t * Math.PI * 14) * 0.035;
@@ -329,15 +331,18 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     audio.play('whoosh');
     const orderIn = orderSpots(spots.map((s, i) => ({ ...s, i })), 'rows').map((s) => s.i);
     await swarm.assemble(orderIn, Math.min(2.4, 1.1 + order.length / 650), 0.62, 0.05);
-    // the penguin cheers
+    // cubey pops up and cheers
     audio.play('tada');
     fx.burst(tmp.set(trayPos.x, floorY + 0.3, trayPos.z), { count: 50, color: [...set.map((c) => c.fun), '#ffffff', '#bfe6ff'], speed: 2.4, up: 3.2, size: 0.05, life: 1.2 });
-    await tweens.tween(0.7, (t) => {
-      penguin.position.y = Math.sin(t * Math.PI) * 0.45;
-      penguin.rotation.y = -0.55 + t * Math.PI * 2;
-    }, ease.inOutCubic, tg);
-    penguin.position.y = 0;
-    cheer = true;
+    void cubey.cheer();
+    await tweens.tween(0.6, (t) => {
+      cubey.position.y = cubeyHome.y + Math.sin(t * Math.PI) * 0.4;
+      cubey.scale.setScalar(1 + Math.sin(t * Math.PI) * 0.15);
+    }, ease.outQuad, tg);
+    cubey.position.copy(cubeyHome);
+    cubey.scale.setScalar(1);
+    void cubey.cheer();
+    done = true;
   }
 
   function finish() {
@@ -349,10 +354,10 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     pivot.rotation.set(0, 0.45, EMPTY_TILT);
     pivot.scale.set(1, 1, 1);
     bag.group.scale.set(1, 0.92, 0.38);
-    penguin.position.copy(penguinHome);
-    penguin.rotation.set(0, -0.55, 0);
+    cubey.position.copy(cubeyHome);
+    cubey.scale.setScalar(1);
     swarm.settleAll();
-    cheer = true;
+    done = true;
   }
 
   return {
@@ -361,8 +366,16 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     finish,
     actionLabel: 'Tear it open!',
     hero: { target: new THREE.Vector3(-0.1, 0.62, 0.15), distance: 6.2, yaw: 0.1, pitch: 0.55 },
-    update(dt) {
+    // the clear window on the bag front, under the logo band
+    label: { object: bag.group, position: new THREE.Vector3(0.05, 0.86, SIZE.d / 2 + 0.006), size: [0.7, 0.36] },
+    update(dt, _time, camera) {
       time += dt;
+      cubey.update(dt, camera);
+      cubeyNext -= dt;
+      if (cubeyNext < 0 && !scan && (idle || done)) {
+        cubeyNext = 3.5 + Math.random() * 3;
+        void (idle ? (Math.random() < 0.6 ? cubey.wave() : cubey.hop()) : Math.random() < 0.5 ? cubey.cheer() : cubey.hop());
+      }
       if (idle) {
         pivot.position.y = rest.y + Math.sin(time * 2) * 0.05;
         pivot.rotation.z = Math.sin(time * 1.3) * 0.04;
@@ -371,11 +384,6 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
       if (!scan && Math.random() < dt * 3) {
         tmp.set(trayPos.x + (Math.random() - 0.5) * traySize, floorY + 0.02, trayPos.z + (Math.random() - 0.5) * traySize);
         fx.burst(tmp, { count: 1, color: sparkleCols, speed: 0.05, up: 0.25, size: 0.03, life: 0.7, gravity: -0.2 });
-      }
-      if (!scan) {
-        const b = cheer ? Math.abs(Math.sin(time * 5)) * 0.06 : Math.abs(Math.sin(time * 2.4)) * 0.025;
-        penguin.position.y = b;
-        penguin.rotation.z = Math.sin(time * (cheer ? 5 : 2.4)) * 0.06;
       }
       swarm.update(dt);
       fx.update(dt);
@@ -388,10 +396,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
       ice.mat.map = on ? whiteTex : ice.tex;
       for (const mesh of swarm.meshes) mesh.castShadow = !on;
       tray.slab.receiveShadow = !on;
-      if (on) {
-        penguin.position.y = 0;
-        penguin.rotation.z = 0;
-      }
+      cubey.visible = !on;
     },
     dispose() {
       swarm.dispose();
