@@ -195,7 +195,7 @@ export class Showcase {
   }
 
   update(dt: number, time: number) {
-    this.item?.update(dt, time);
+    this.item?.update(dt, time, this.camera);
     if (this.controls.enabled) this.controls.update();
     void this.turntable;
   }

@@ -35,16 +35,30 @@ export interface FocusView {
   up: THREE.Vector3;
 }
 
+/** Where the link sticker sits on the unopened package (the diegetic input). */
+export interface LabelAnchor {
+  /** Object the sticker is glued to; it moves with it until the reveal starts. */
+  object: THREE.Object3D;
+  /** Sticker centre in the object's local space. */
+  position: THREE.Vector3;
+  /** Sticker rotation in the object's local space (default: facing +Z). */
+  rotation?: THREE.Euler;
+  /** Sticker size in world units [width, height]. */
+  size: [number, number];
+}
+
 export interface ShowcaseItem {
   root: THREE.Object3D;
   /** Plays the unboxing and builds the QR. Resolves once the QR is complete. */
   reveal(): Promise<void>;
   /** Skip straight to the finished QR. */
   finish(): void;
-  update(dt: number, time: number): void;
+  update(dt: number, time: number, camera?: THREE.Camera): void;
   focusView(): FocusView;
   /** Called when scan mode toggles, e.g. to switch to scan-safe colours. */
   setScanMode?(on: boolean): void;
+  /** Where the link sticker goes on the package before it is opened. */
+  label?: LabelAnchor;
   /** Camera target + distance for the idle view before the reveal. */
   hero: { target: THREE.Vector3; distance: number; yaw?: number; pitch?: number };
   /** Optional pointer interaction (scratch cards etc). Return true if handled. */
