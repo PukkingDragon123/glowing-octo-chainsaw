@@ -2,14 +2,17 @@ import * as THREE from 'three';
 import { Painter, shade } from '../../engine/Painter';
 import { ease } from '../../engine/tween';
 import { audio } from '../../engine/audio';
-import { toonGradient, voxelMaterial, voxelMesh } from '../../engine/voxel';
+import { FONT_TINY } from '../../engine/pixelFont';
+import { toonGradient } from '../../engine/voxel';
 import { LAYER_NO_OUTLINE } from '../../engine/PixelRenderer';
+import { Buddy } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import { Batcher, paintGeometry, toonMat } from '../../engine/batch';
 import type { Flavor, ProductContext, ProductDef, ShowcaseItem } from '../types';
 import { atlasBox } from '../common/box';
 import { Particles } from '../common/props';
 import { composePoster, posterScale } from '../common/poster';
-import { COCOA_SCAN, cookieVoxels, CUP, cupArt, foamArt, FOAM_SCAN, LATTE_FLAVORS, pitcherVoxels, POSTER, posterArt, shakerVoxels, signArt, signSide, spoonVoxels } from './art';
+import { COCOA_SCAN, CUP, CUP_LABEL, CUP_TEX, cupArt, foamArt, FOAM_SCAN, INK, LATTE_FLAVORS, POSTER, posterArt, signArt, signSide } from './art';
 import { CocoaCode, StencilCard } from './parts';
 
 const SAUCER_TOP = 0.106;
@@ -109,9 +112,118 @@ function menuSign(f: Flavor) {
   return g;
 }
 
+function shadowed<T extends THREE.Object3D>(o: T): T {
+  o.traverse((c) => {
+    const m = c as THREE.Mesh;
+    if (m.isMesh) m.castShadow = m.receiveShadow = true;
+  });
+  return o;
+}
+
+/** Stainless milk jug with its origin at the bottom centre: round belly, pointed spout (+X), loop handle (-X). */
+function pitcherModel() {
+  const g = new THREE.Group();
+  const steel = toon('#cfd8e3', { side: THREE.DoubleSide });
+  const profile = [
+    [0, 0],
+    [0.24, 0],
+    [0.275, 0.03],
+    [0.285, 0.12],
+    [0.275, 0.34],
+    [0.25, 0.55],
+    [0.25, 0.64],
+    [0.265, 0.7],
+  ].map(([x, y]) => new THREE.Vector2(x, y));
+  g.add(new THREE.Mesh(new THREE.LatheGeometry(profile, 28), steel));
+  // a bright band and the milk inside
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.281, 0.284, 0.05, 28, 1, true), toon('#eef3f8'));
+  band.position.y = 0.2;
+  g.add(band);
+  const milk = new THREE.Mesh(new THREE.CircleGeometry(0.245, 24), toon('#fffaf0'));
+  milk.rotation.x = -Math.PI / 2;
+  milk.position.y = 0.6;
+  g.add(milk);
+  // spout: a little tapered lip pointing out and up
+  const spout = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.2, 12, 1, true), steel);
+  spout.scale.z = 0.7;
+  spout.rotation.z = -Math.PI / 2 + 0.5;
+  spout.position.set(0.3, 0.66, 0);
+  g.add(spout);
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.034, 8, 16, Math.PI * 1.15), steel);
+  handle.rotation.z = Math.PI * 0.43;
+  handle.position.set(-0.27, 0.4, 0);
+  g.add(handle);
+  return shadowed(g);
+}
+
+/** Cocoa shaker (origin at the bottom centre): flavour-coloured tin, cream label with a heart, domed lid with holes. */
+function shakerModel(f: Flavor) {
+  const g = new THREE.Group();
+  const tin = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.54, 24), toon(f.c.cup));
+  tin.position.y = 0.27;
+  const label = new Painter(64, 16).clear('#fff6ea');
+  label.rect(0, 0, 64, 1, f.c.cupDark).rect(0, 15, 64, 1, f.c.cupDark);
+  label.sprite(['.#.#.', '#####', '#####', '.###.', '..#..'], 30, 5, { '#': '#ff8fa3' });
+  label.text('COCOA', 12, 5, { font: FONT_TINY, color: f.c.cupDark, align: 'center' });
+  label.text('COCOA', 52, 5, { font: FONT_TINY, color: f.c.cupDark, align: 'center' });
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.204, 0.204, 0.2, 24, 1, true), toon('#ffffff', { map: label.texture() }));
+  band.position.y = 0.28;
+  band.rotation.y = Math.PI; // the heart (texture centre) faces +Z
+  const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.212, 0.212, 0.1, 24), toon('#dfe6ee'));
+  lid.position.y = 0.59;
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.2, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), toon('#eef3f8'));
+  dome.scale.y = 0.42;
+  dome.position.y = 0.64;
+  g.add(tin, band, lid, dome);
+  const holeMat = toon(INK);
+  for (const [x, z] of [[0, 0], [0.08, 0], [-0.08, 0], [0, 0.08], [0, -0.08]]) {
+    const h = new THREE.Mesh(new THREE.CircleGeometry(0.018, 8), holeMat);
+    h.rotation.x = -Math.PI / 2;
+    h.position.set(x, 0.64 + 0.084 - (x * x + z * z) * 1.1, z);
+    g.add(h);
+  }
+  return shadowed(g);
+}
+
+/** Butter cookie with chocolate chips (origin at the bottom centre). */
+function cookieModel() {
+  const top = new Painter(32, 32).clear('#e8b86a');
+  top.disc(16, 16, 15, '#efc57c');
+  for (const [x, y] of [[10, 9], [20, 12], [14, 20], [23, 21], [8, 17], [17, 5], [25, 15]]) top.rect(x, y, 2, 2, '#f7d89c');
+  const side = toon('#d9a55a');
+  const face = toon('#ffffff', { map: top.texture() });
+  const g = new THREE.Group();
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.19, 0.07, 24), [side, face, side]);
+  disc.position.y = 0.035;
+  g.add(disc);
+  const chip = toon('#5a3420');
+  for (const [x, z] of [[-0.07, -0.05], [0.06, -0.08], [0.02, 0.06], [-0.09, 0.07], [0.1, 0.04]]) {
+    const c = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 5), chip);
+    c.scale.y = 0.7;
+    c.position.set(x, 0.072, z);
+    g.add(c);
+  }
+  return shadowed(g);
+}
+
+/** Teaspoon lying on its back, centred at the origin along X (bowl on +X). */
+function spoonModel() {
+  const g = new THREE.Group();
+  const steel = toon('#b9c3d0');
+  const handle = new THREE.Mesh(new THREE.CapsuleGeometry(0.018, 0.44, 4, 8), steel);
+  handle.rotation.z = Math.PI / 2;
+  handle.scale.z = 0.6;
+  handle.position.set(-0.08, 0.018, 0);
+  const bowl = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 8), toon('#cfd8e3'));
+  bowl.scale.set(0.12, 0.03, 0.085);
+  bowl.position.set(0.24, 0.03, 0);
+  g.add(handle, bowl);
+  return shadowed(g);
+}
+
 function disposeTree(root: THREE.Object3D) {
-  const shared = voxelMaterial();
   const grad = toonGradient();
+  const shared = toonMat();
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (mesh.geometry) mesh.geometry.dispose();
@@ -138,14 +250,23 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   cup.group.position.set(C.x, SAUCER_TOP, C.z);
   root.add(cup.group);
   const cupTex = { smile: cup.wallMat.map!, happy: cupArt(f, 'happy').texture() };
-  const cookie = voxelMesh(cookieVoxels(), { scale: 0.045, anchor: 'bottom-center' });
-  cookie.position.set(C.x + 0.92, SAUCER_TOP - 0.01, C.z + 0.78);
-  cookie.rotation.set(0.12, 0.4, 0);
+  const cookie = cookieModel();
+  cookie.position.set(C.x + 0.92, SAUCER_TOP - 0.005, C.z + 0.78);
+  cookie.rotation.set(0.1, 0.4, 0);
   root.add(cookie);
-  const spoon = voxelMesh(spoonVoxels(), { scale: 0.045, anchor: 'bottom-center' });
+  const spoon = spoonModel();
   spoon.position.set(C.x - 0.62, SAUCER_TOP, C.z + 0.98);
   spoon.rotation.y = 0.55;
   root.add(spoon);
+  // the bean buddy hops up beside the saucer to cheer once the art is done
+  const beanAt = new THREE.Vector3(1.9, 0, 0.95);
+  const bean = new Buddy(CAST.bean, 64);
+  bean.billboard = true;
+  bean.position.copy(beanAt);
+  bean.visible = false;
+  root.add(bean);
+  let beanNext = 4;
+  let done = false;
   const sign = menuSign(f);
   sign.position.set(-1.9, 0, -1.05);
   sign.rotation.y = 0.42;
@@ -197,7 +318,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
 
   // --- pitcher + shaker
   const pitcher = new THREE.Group();
-  const pitcherMesh = voxelMesh(pitcherVoxels(), { scale: 0.045, anchor: 'bottom-center' });
+  const pitcherMesh = pitcherModel();
   pitcherMesh.position.y = -0.36;
   pitcher.add(pitcherMesh);
   const pitcherRest = new THREE.Vector3(-1.85, 0.36, 0.42);
@@ -207,7 +328,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   const spoutLocal = new THREE.Vector3(0.4, 0.33, 0);
 
   const shaker = new THREE.Group();
-  const shakerMesh = voxelMesh(shakerVoxels(f), { scale: 0.045, anchor: 'bottom-center' });
+  const shakerMesh = shakerModel(f);
   shakerMesh.position.y = -0.36;
   shaker.add(shakerMesh);
   const shakerRest = new THREE.Vector3(2.05, 0.36, -0.3);
@@ -231,7 +352,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
 
   // steam puffs
   const steamN = 12;
-  const steam = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.4, depthWrite: false }), steamN);
+  const steam = new THREE.InstancedMesh(new THREE.SphereGeometry(0.6, 10, 6), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.4, depthWrite: false }), steamN);
   steam.layers.set(LAYER_NO_OUTLINE);
   steam.frustumCulled = false;
   root.add(steam);
@@ -270,8 +391,26 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     surface.receiveShadow = true;
     codePlane.receiveShadow = true;
     steamOn = true;
+    bean.visible = false;
+    done = false;
   };
   reset();
+
+  /** The bean buddy pops up (squash & stretch) and cheers. */
+  const popBean = (animated: boolean) => {
+    bean.position.copy(beanAt);
+    bean.visible = !scan;
+    done = true;
+    if (!animated) {
+      bean.scale.setScalar(1);
+      return;
+    }
+    bean.scale.setScalar(0.01);
+    void tweens.tween(0.5, (t) => {
+      bean.scale.setScalar(Math.max(0.01, ease.outBack(t)));
+      bean.position.y = beanAt.y + Math.sin(t * Math.PI) * 0.35;
+    }, ease.linear, tg).then(() => void bean.cheer());
+  };
 
   const spout = new THREE.Vector3();
   const pourTo = new THREE.Vector3();
@@ -388,6 +527,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     audio.play('ding');
     fx2.burst(_dust.set(C.x, levelFull + 0.15, C.z), { count: 40, color: ['#ff8fa3', '#ffffff', f.c.accent, f.c.crema], speed: 1.8, up: 2.6, size: 0.045, life: 1 });
     cup.wallMat.map = cupTex.happy;
+    popBean(true);
     await tweens.wait(0.35, tg);
     audio.play('tada');
     steamOn = true;
@@ -404,6 +544,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     surface.receiveShadow = false;
     codePlane.receiveShadow = false;
     cup.wallMat.map = cupTex.happy;
+    popBean(false);
   }
 
   const steamSpots = [
@@ -412,14 +553,28 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     [0.4, 0.25],
   ];
 
+  // the order sticker goes on the cup front, below its face, following the wall's slant
+  const labelMid = 1 - (CUP_LABEL.top + CUP_LABEL.bottom) / 2 / CUP_TEX.h;
+  const labelR = CUP.rBottom + (CUP.rTop - CUP.rBottom) * labelMid;
+  const labelTilt = Math.atan2(CUP.rTop - CUP.rBottom, CUP.h);
+
   return {
     root,
     reveal,
     finish,
     actionLabel: 'Pour & dust!',
     hero: { target: new THREE.Vector3(0.05, 0.72, 0.25), distance: 6.3, yaw: 0.08, pitch: 0.58 },
-    update(dt) {
+    label: { object: cup.group, position: new THREE.Vector3(0, CUP.foot + CUP.h * labelMid, labelR + 0.004), rotation: new THREE.Euler(labelTilt, 0, 0), size: [0.78, 0.33] },
+    update(dt, _time, camera) {
       time += dt;
+      bean.update(dt, camera);
+      if (done && !scan && bean.visible) {
+        beanNext -= dt;
+        if (beanNext < 0) {
+          beanNext = 4 + Math.random() * 3;
+          void (Math.random() < 0.5 ? bean.wave() : bean.hop());
+        }
+      }
       // steam
       const show = steamOn && !scan;
       for (let i = 0; i < steamN; i++) {
@@ -444,6 +599,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     focusView: () => ({ center: new THREE.Vector3(C.x, levelFull + 0.002, C.z), normal: new THREE.Vector3(0, 1, 0), size: S, up: new THREE.Vector3(0, 0, -1) }),
     setScanMode(on) {
       scan = on;
+      bean.visible = done && !on;
       cocoa.setScan(on);
       surfMat.map = on ? foamScanTex : foamTex;
       if (on) surface.receiveShadow = codePlane.receiveShadow = false;

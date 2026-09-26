@@ -1,7 +1,8 @@
 import { Painter, shade } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
 import { rng } from '../../engine/tween';
-import { VoxelGrid } from '../../engine/voxel';
+import { buddyPortrait, drawEyes, drawMouth, type BuddySpec, type Pose } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor } from '../types';
 
 export const INK = '#1d1b26';
@@ -19,26 +20,53 @@ export const LATTE_FLAVORS: Flavor[] = [
 /** Cup dimensions (world units, before any scaling). */
 export const CUP = { rTop: 1.02, rBottom: 0.72, h: 0.86, wall: 0.08, foot: 0.035 };
 
+/** A mascot at packaging size: body, face and limbs shrink together (the pixel style stays). */
+function miniSpec(spec: BuddySpec, k: number): BuddySpec {
+  const L = spec.limbs ?? { color: '#58a88f', tip: '#f3d270' };
+  return {
+    ...spec,
+    body: { ...spec.body, w: Math.round(spec.body.w * k), h: Math.round(spec.body.h * k) },
+    eyes: { ...spec.eyes, gap: spec.eyes?.gap !== undefined ? spec.eyes.gap * k : undefined, r: spec.eyes?.r !== undefined ? Math.max(1.5, spec.eyes.r * k) : undefined },
+    mouth: { ...spec.mouth, w: spec.mouth?.w !== undefined ? Math.round(spec.mouth.w * k) : undefined },
+    limbs: { ...L, arm: Math.round((L.arm ?? 13) * k), leg: Math.round((L.leg ?? 9) * k), thick: Math.max(4, Math.round((L.thick ?? 6) * k)) },
+  };
+}
+
+/** Bean, the coffee-bean buddy, as a flat portrait (`k` = size relative to the full mascot). */
+export function beanArt(k: number, pose: Pose = {}): Painter {
+  // the cream swirl doesn't shrink with the body, so the small versions go without it
+  return buddyPortrait(k === 1 ? CAST.bean : { ...miniSpec(CAST.bean, k), top: undefined }, pose).toPainter();
+}
+
+/** Cup wall texture size: ~55 px per world unit both ways, so the face keeps round dot eyes. */
+export const CUP_TEX = { w: 300, h: 48 };
+/** Rows of the wall texture kept clear under the face for the order sticker. */
+export const CUP_LABEL = { top: 24, bottom: 41 };
+
+/** The cup's face, drawn with the buddy's dot eyes, toothy grin and blush dots. */
+const CUP_FACE: BuddySpec = { ...CAST.bean, body: { ...CAST.bean.body, w: 40, h: 40 }, eyes: { gap: 17, r: 2.4 }, mouth: { w: 12 } };
+
 /** Outer wall wrap-around art. Centre column faces the viewer; u = 0.75 is where the handle sits. */
 export function cupArt(f: Flavor, mood: 'smile' | 'happy'): Painter {
-  const w = 200;
-  const h = 48;
+  const { w, h } = CUP_TEX;
   const p = new Painter(w, h);
+  const cx = w / 2;
   p.clear(f.c.cup);
   p.rect(0, h - 8, w, 8, f.c.cupDark);
   p.rect(0, h - 9, w, 1, shade(f.c.cupDark, -0.08));
-  // glaze drips from the rim
+  // glaze drips from the rim (short ones over the face)
   const glaze = '#fff6ea';
-  p.rect(0, 0, w, 6, glaze);
+  p.rect(0, 0, w, 5, glaze);
   const r = rng(4);
-  for (let x = 0; x < w; x += 7 + Math.floor(r() * 6)) {
-    const len = 2 + Math.floor(r() * 6);
-    p.rect(x, 6, 3, len, glaze);
-    p.rect(x + 1, 6 + len, 1, 1, glaze);
-    p.px(x + 2, 6, shade(glaze, -0.06));
+  for (let x = 0; x < w; x += 8 + Math.floor(r() * 7)) {
+    const nearFace = Math.abs(x + 1 - cx) < 26;
+    const len = nearFace ? 1 : 2 + Math.floor(r() * 5);
+    p.rect(x, 5, 3, len, glaze);
+    p.rect(x + 1, 5 + len, 1, 1, glaze);
+    p.px(x + 2, 5, shade(glaze, -0.06));
   }
-  p.rect(0, 6, w, 1, 'rgba(255,255,255,0.4)');
-  // little hearts + beans around the back
+  p.rect(0, 5, w, 1, 'rgba(255,255,255,0.4)');
+  // little hearts + beans around the back, the logo on either side
   const heart = (x: number, y: number, c: string) => {
     p.sprite(['.#.#.', '#####', '#####', '.###.', '..#..'], x, y, { '#': c });
   };
@@ -46,27 +74,20 @@ export function cupArt(f: Flavor, mood: 'smile' | 'happy'): Painter {
     p.ellipse(x, y, 3, 2, '#5a3420');
     p.px(x - 1, y - 1, '#7a4a2c').rect(x - 1, y, 3, 1, '#3a2214');
   };
-  heart(20, 22, f.c.accent);
-  bean(36, 30);
-  heart(160, 16, f.c.accent);
-  bean(176, 24);
-  p.text('LATTE', 50, 18, { font: FONT_TINY, color: glaze, outline: f.c.cupDark });
-  p.text('CODE', 128, 30, { font: FONT_TINY, color: glaze, outline: f.c.cupDark });
-  // kawaii face at the front
-  const cx = w / 2;
-  const ey = 22;
-  p.ellipse(cx - 17, ey + 7, 4, 2, 'rgba(255,130,160,0.8)');
-  p.ellipse(cx + 17, ey + 7, 4, 2, 'rgba(255,130,160,0.8)');
-  if (mood === 'smile') {
-    for (const ex of [cx - 10, cx + 10]) {
-      p.sprite(['.###.', '#####', '#####', '#####', '.###.'], ex - 2, ey - 2, { '#': INK });
-      p.rect(ex - 1, ey - 1, 2, 2, '#ffffff');
-    }
-  } else {
-    for (const ex of [cx - 10, cx + 10]) p.sprite(['.###.', '#...#', '#...#'], ex - 2, ey - 1, { '#': INK });
-  }
-  p.sprite(['#...#', '.###.'], cx - 2, ey + 5, { '#': '#7a1f2b' });
-  if (mood === 'happy') p.rect(cx - 1, ey + 6, 3, 1, '#ff8fa3');
+  heart(26, 20, f.c.accent);
+  bean(44, 29);
+  heart(262, 15, f.c.accent);
+  bean(284, 25);
+  p.text('LATTE', 88, 18, { font: FONT_TINY, color: glaze, outline: f.c.cupDark, align: 'center' });
+  p.text('CODE', 206, 18, { font: FONT_TINY, color: glaze, outline: f.c.cupDark, align: 'center' });
+  // kawaii buddy face at the front, above the sticker spot
+  const blush = CAST.bean.blush ?? '#ff9ab0';
+  p.ellipse(cx - 15, 17, 3.6, 2.2, blush);
+  p.ellipse(cx + 15, 17, 3.6, 2.2, blush);
+  const e = drawEyes(CUP_FACE, mood === 'smile' ? 'dot' : 'happy').toCanvas();
+  p.blit(e, Math.round(cx - e.width / 2), Math.round(12 - e.height / 2));
+  const m = drawMouth(CUP_FACE, mood === 'smile' ? 'grin' : 'open').toCanvas();
+  p.blit(m, Math.round(cx - m.width / 2), 14);
   return p;
 }
 
@@ -94,7 +115,7 @@ export function foamArt(f: Flavor, scan = false): Painter {
   return p;
 }
 
-/** Chalkboard menu sign: logo, mascot, flavour, price, badges. */
+/** Chalkboard menu sign: logo, the bean buddy, flavour and price. */
 export function signArt(f: Flavor): Painter {
   const w = 64;
   const h = 80;
@@ -105,96 +126,20 @@ export function signArt(f: Flavor): Painter {
   p.rect(0, 0, w, 1, '#d19a5c').rect(0, 0, 1, h, '#d19a5c');
   p.text('LATTE', w / 2, 5, { font: FONT_BIG, bold: true, color: '#fff6ea', align: 'center' });
   p.text('CODE', w / 2, 14, { font: FONT_BIG, bold: true, color: f.c.accent, align: 'center' });
-  // chalk cup mascot
-  const cx = w / 2;
-  const cy = 38;
-  p.roundRect(cx - 10, cy - 6, 20, 15, 4, '#fff6ea');
-  p.rect(cx - 9, cy - 5, 18, 3, f.c.cup);
-  p.ring(cx + 11, cy + 1, 4, '#fff6ea', 2);
-  p.px(cx - 4, cy + 1, INK).px(cx + 4, cy + 1, INK).rect(cx - 1, cy + 4, 3, 1, INK);
-  p.px(cx - 6, cy + 3, '#ff8fa3').px(cx + 6, cy + 3, '#ff8fa3');
-  for (let i = 0; i < 3; i++) p.line(cx - 5 + i * 5, cy - 9, cx - 3 + i * 5, cy - 13, '#d8d2c4');
-  // flavour + price
-  const name = f.name.toUpperCase();
-  p.text(name, w / 2, 52, { font: FONT_TINY, color: '#fff6ea', align: 'center' });
-  p.rect(10, 59, w - 20, 1, '#d8d2c4');
-  p.text('60 QB', w / 2 - 11, 62, { font: FONT_BIG, color: '#ffd23f', align: 'center' });
-  p.text('350ML', w / 2 + 18, 64, { font: FONT_TINY, color: '#d8d2c4', align: 'center' });
+  // the bean buddy waving hello, with a HOT badge
+  const bean = beanArt(0.56, { armL: 0.5, armR: 2.6 });
+  p.blit(bean, Math.round(w / 2 - bean.w / 2), 58 - bean.h);
   p.burst(w - 11, 30, 7, 10, '#ff5d73');
   p.text('HOT', w - 11, 28, { font: FONT_TINY, color: '#ffffff', align: 'center' });
-  p.text('ART INSIDE', w / 2, 72, { font: FONT_TINY, color: '#bfe3d0', align: 'center' });
+  // flavour + price
+  p.text(f.name.toUpperCase(), w / 2, 60, { font: FONT_TINY, color: '#fff6ea', align: 'center' });
+  p.rect(10, 67, w - 20, 1, '#d8d2c4');
+  p.text('60 QB', w / 2, 70, { font: FONT_BIG, color: '#ffd23f', align: 'center' });
   return p;
 }
 
 export function signSide(): Painter {
   return new Painter(8, 80).clear('#8f6030');
-}
-
-/** Stainless milk jug (≈ 16×16×13 voxels): tapered body, pointed spout on +X, loop handle on -X. */
-export function pitcherVoxels(): VoxelGrid {
-  const g = new VoxelGrid(19, 17, 13);
-  const steel = '#cfd8e3';
-  const dark = '#a3afc0';
-  const light = '#f1f5fa';
-  const cx = 8;
-  const cz = 6;
-  for (let y = 0; y <= 14; y++) {
-    const r = 5.9 - y * 0.09;
-    g.cylinder(cx, cz, y, y, r, steel, r);
-    if (y >= 1) g.cylinder(cx, cz, y, y, r - 1, null, r - 1);
-  }
-  g.cylinder(cx, cz, 15, 15, 5.2, steel, 5.2);
-  g.cylinder(cx, cz, 15, 15, 4.2, null, 4.2);
-  // milk inside
-  g.cylinder(cx, cz, 11, 12, 4.6, '#fffaf0', 4.6);
-  // shading: bright on the right, darker on the left, a pressed band
-  g.paint((x, y) => {
-    if (y === 3 || y === 4) return x > cx + 2 ? '#dfe6ee' : '#b8c4d4';
-    if (x >= cx + 3) return light;
-    if (x <= cx - 4) return dark;
-    return null;
-  });
-  // pointed spout
-  g.box(cx + 5, 12, cz - 2, cx + 6, 15, cz + 2, steel);
-  g.box(cx + 7, 14, cz - 1, cx + 8, 15, cz + 1, light);
-  g.box(cx + 9, 15, cz, cx + 9, 15, cz, light);
-  g.box(cx + 5, 13, cz - 1, cx + 8, 15, cz + 1, null);
-  g.box(cx + 5, 13, cz, cx + 9, 14, cz, null);
-  // loop handle
-  g.box(cx - 8, 4, cz - 1, cx - 8, 12, cz + 1, dark);
-  g.box(cx - 7, 12, cz - 1, cx - 6, 13, cz + 1, dark);
-  g.box(cx - 7, 4, cz - 1, cx - 6, 4, cz + 1, dark);
-  return g;
-}
-
-/** Cocoa shaker with a flavour label and a holey lid. Lid on top (+Y). */
-export function shakerVoxels(f: Flavor): VoxelGrid {
-  const g = new VoxelGrid(11, 16, 11);
-  g.cylinder(5, 5, 0, 11, 4.4, f.c.cup, 4.4);
-  g.cylinder(5, 5, 4, 8, 4.5, '#fff6ea', 4.5);
-  g.cylinder(5, 5, 12, 14, 4.6, '#dfe6ee', 4.6);
-  g.cylinder(5, 5, 15, 15, 3.4, '#dfe6ee', 3.4);
-  g.set(4, 15, 4, INK).set(6, 15, 6, INK).set(4, 15, 6, INK).set(6, 15, 4, INK).set(5, 15, 5, INK);
-  // label heart
-  g.box(4, 6, 10, 6, 6, 10, '#ff8fa3');
-  g.set(4, 7, 10, '#ff8fa3').set(6, 7, 10, '#ff8fa3').set(5, 5, 10, '#ff8fa3');
-  return g;
-}
-
-/** Butter cookie with chocolate chips. */
-export function cookieVoxels(): VoxelGrid {
-  const g = new VoxelGrid(9, 2, 9);
-  g.cylinder(4.5, 4.5, 0, 1, 4.3, '#e8b86a', 4.3);
-  g.paint((x, y, z) => (y === 1 && (x * 7 + z * 3) % 11 === 0 ? '#5a3420' : y === 1 && (x + z) % 5 === 0 ? '#f4cf8a' : null));
-  return g;
-}
-
-export function spoonVoxels(): VoxelGrid {
-  const g = new VoxelGrid(16, 2, 5);
-  g.box(0, 0, 2, 10, 0, 2, '#cfd8e3');
-  g.ellipsoid(13, 0.8, 2.5, 2.6, 1.2, 2.2, '#dfe6ee');
-  g.set(0, 0, 2, '#9aa7b8');
-  return g;
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -254,6 +199,9 @@ export function posterArt(f: Flavor): Painter {
   p.disc(126, 60, 10, INK);
   p.disc(126, 60, 9, '#e8b86a');
   p.px(123, 57, '#5a3420').px(128, 62, '#5a3420').px(125, 63, '#5a3420').px(129, 56, '#5a3420');
+  // the bean buddy cheering on the napkin (clear of the code square)
+  const buddy = beanArt(0.62, { armL: 2.6, armR: 2.6, eyes: 'happy', mouth: 'open' });
+  p.blit(buddy, Math.min(3, POSTER.codeX - 2 - buddy.w), h - 14 - buddy.h);
   // flavour ribbon
   p.rect(0, h - 14, w, 14, f.c.cupDark);
   p.rect(0, h - 14, w, 1, INK);
