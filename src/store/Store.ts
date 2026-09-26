@@ -7,6 +7,7 @@ import { makeClerk, type ClerkAPI } from '../app/clerkApi';
 import { spriteMesh } from '../art/spriteMesh';
 import { iconBitmap } from '../art/icons';
 import { cactusSprite, plantSprite } from '../art/decor';
+import { drawLogo } from '../art/brand';
 import { Kit, PAL } from './kit';
 import { Stock } from './stock';
 import { Shoppers } from './npcs';
@@ -388,6 +389,25 @@ export class Store {
       m.position.set(x, 2.12, STORE.shelfFrontZ - 0.25);
       this.scene.add(m);
     }
+
+    // entrance: welcome mat and a big logo decal on the floor
+    kit.rbox(1.6, 0.02, 0.9, 0.08, PAL.pink, STORE.doorX, 0, 2.2);
+    kit.rbox(1.44, 0.025, 0.74, 0.06, PAL.pinkLight, STORE.doorX, 0, 2.2);
+    const decal = spriteMesh(drawLogo(48, { badge: true, round: true }).toCanvas(), { ppu: 48 / 1.1, anchor: [0.5, 0.5] });
+    decal.rotation.x = -Math.PI / 2;
+    decal.position.set(STORE.doorX + 2.6, 0.004, 1.2);
+    decal.receiveShadow = true;
+    this.scene.add(decal);
+    // a round window with sky at the far end of the aisle
+    kit.cyl(0.62, 0.62, 0.1, PAL.white, 47.9, 1.35, STORE.backZ + 0.05, 28, Math.PI / 2);
+    kit.cyl(0.55, 0.55, 0.12, PAL.pink, 47.9, 1.35, STORE.backZ + 0.06, 28, Math.PI / 2);
+    const skyWin = new THREE.Mesh(new THREE.CircleGeometry(0.5, 28), new THREE.MeshBasicMaterial({ color: '#bfe6ff' }));
+    skyWin.position.set(47.9, 1.35 + 0.06, STORE.backZ + 0.13);
+    this.scene.add(skyWin);
+    const cloudy = new THREE.Mesh(new THREE.CircleGeometry(0.16, 16), new THREE.MeshBasicMaterial({ color: '#ffffff' }));
+    cloudy.scale.set(1.8, 0.8, 1);
+    cloudy.position.set(47.78, 1.3, STORE.backZ + 0.14);
+    this.scene.add(cloudy);
 
     // hanging icon signs
     for (const s of SECTIONS) {
