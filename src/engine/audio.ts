@@ -1,5 +1,5 @@
 /**
- * Tiny synthesizer: every sound in QR Market is generated with WebAudio, no audio files.
+ * Tiny synthesizer: every sound in Xolotl Kobini is generated with WebAudio, no audio files.
  */
 export type Sfx =
   | 'chime'

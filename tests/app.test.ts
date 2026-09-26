@@ -98,7 +98,7 @@ describe('content → payload', () => {
   it('builds Wi-Fi and contact payloads', async () => {
     const c = defaultContent();
     c.mode = 'wifi';
-    expect((await buildPayload(c)).text).toMatch(/^WIFI:T:WPA;S:QR-Market-Guest;P:scanme123;;$/);
+    expect((await buildPayload(c)).text).toMatch(/^WIFI:T:WPA;S:Kobini-Guest;P:scanme123;;$/);
     c.mode = 'contact';
     expect((await buildPayload(c)).text).toMatch(/^BEGIN:VCARD/);
   });

@@ -22,9 +22,9 @@ export function defaultContent(): ContentState {
   return {
     mode: 'link',
     link: DEFAULT_LINK,
-    text: 'Hello from QR Market!',
-    wifi: { ssid: 'QR-Market-Guest', password: 'scanme123', security: 'WPA' },
-    contact: { name: 'Captain QR', phone: '+66 81 234 5678', email: 'captain@qr.market', org: 'QR Market', url: '' },
+    text: 'Hello from Xolotl Kobini!',
+    wifi: { ssid: 'Kobini-Guest', password: 'scanme123', security: 'WPA' },
+    contact: { name: 'Xolo the Clerk', phone: '+66 81 234 5678', email: 'hello@xolotl.kobini', org: 'Xolotl Kobini', url: '' },
     image: null,
     video: null,
     ec: 'M',
@@ -48,7 +48,7 @@ export async function buildPayload(c: ContentState): Promise<Payload> {
   switch (c.mode) {
     case 'link': {
       const url = normalizeUrl(c.link);
-      if (!url) return { text: DEFAULT_LINK, label: 'QR Market', art: null, error: 'Paste a link to make your code.' };
+      if (!url) return { text: DEFAULT_LINK, label: 'Xolotl Kobini', art: null, error: 'Paste a link to make your code.' };
       const kind = detectLinkKind(url);
       return { text: url, label: kind === 'web' ? describePayload(url) : `${LINK_KIND_LABEL[kind]} · ${describePayload(url)}`, art: null };
     }

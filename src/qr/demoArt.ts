@@ -36,5 +36,5 @@ export function demoPixelArt(frames = 1, size = 24): PixelArt {
       }
     out.push(px);
   }
-  return { w: size, h: size, palette, frames: out, delay: 180, caption: frames > 1 ? 'Hi from QR Market!' : 'Wish you were here!' };
+  return { w: size, h: size, palette, frames: out, delay: 180, caption: frames > 1 ? 'Hi from Xolotl Kobini!' : 'Wish you were here!' };
 }

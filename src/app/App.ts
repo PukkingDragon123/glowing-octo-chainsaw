@@ -242,7 +242,9 @@ export class App {
   }
 
   back() {
-    if (this.mode === 'showcase') void this.closeProduct();
+    if (this.mode !== 'showcase') return;
+    if (this.showcase.focusMode) this.toggleFocus(false);
+    else void this.closeProduct();
   }
 
   async closeProduct() {
