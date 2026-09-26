@@ -740,8 +740,10 @@ export class Clerk {
       lx = this.v1.x;
       ly = this.v1.y;
     }
-    P.lookX = lx;
-    P.lookY = ly;
+    // the pilot keeps an eye on its own claw while it fidgets
+    const peek = this.fidgetT >= 0 && !this.lookActive ? bump(0, 1.3, this.fidgetT) : 0;
+    P.lookX = lerp(lx, 0.9, peek);
+    P.lookY = lerp(ly, -0.7, peek);
   }
 
   /** World point → look direction (-1..1, -1..1) from the pilot's head. Writes into v. */
@@ -898,6 +900,8 @@ export class Clerk {
         P.shake = 0.003 * rev;
         P.eyes = 'sparkle';
         P.mouth = 'open';
+        P.lookX = lerp(P.lookX, 1, w);
+        P.lookY = lerp(P.lookY, 0.1, w);
         this.setCurl(P, lerp(P.curl0, 2, w));
         P.cl += Math.sin(t * 30) * 3 * rev;
         if (t > 0.3 && this.burstQueue === 0 && t - dt <= 0.3) this.burst(4);
