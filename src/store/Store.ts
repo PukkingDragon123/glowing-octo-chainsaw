@@ -243,8 +243,9 @@ export class Store {
     return ok.length ? ok : (['bakery', 'snacks', 'candy', 'breakfast', 'fresh', 'drinks', 'frozen', 'meals', 'pantry'] as Aisle[]).filter((a) => this.stock.aisle(a).length > 0);
   }
 
-  /** Canvas of a food sprite, falling back to any food if the id doesn't exist. */
+  /** Canvas of a food sprite (or `icon:<name>` for a pixel icon), falling back to any food. */
   private foodIcon(id: string) {
+    if (id.startsWith('icon:')) return iconBitmap(id.slice(5) as never).toCanvas();
     const def = this.stock.defs.find((d) => d.id === id) ?? this.stock.defs[0];
     return this.stock.canvas(def.id);
   }

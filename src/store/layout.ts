@@ -31,12 +31,12 @@ export const SECTIONS: SectionInfo[] = [
   { id: 'checkout', x0: -11, x1: -2.4, color: '#f47c9f', sign: 'donut' },
   { id: 'bakery', x0: -2.4, x1: 4.2, color: '#ffb98f', sign: 'croissant' },
   { id: 'snacks', x0: 4.2, x1: 11, color: '#ffd66b', sign: 'popcorn' },
-  { id: 'candy', x0: 11, x1: 15.6, color: '#ff9fc0', sign: 'cupcake' },
-  { id: 'cereal', x0: 15.6, x1: 21.8, color: '#b9a2f0', sign: 'cereal-bowl' },
+  { id: 'candy', x0: 11, x1: 15.6, color: '#ff9fc0', sign: 'lollipop' },
+  { id: 'cereal', x0: 15.6, x1: 21.8, color: '#b9a2f0', sign: 'cereal' },
   { id: 'fresh', x0: 21.8, x1: 28.8, color: '#7cc9a8', sign: 'onigiri' },
   { id: 'drinks', x0: 28.8, x1: 36.8, color: '#79bfee', sign: 'lemonade' },
-  { id: 'frozen', x0: 36.8, x1: 41.8, color: '#9ad7f2', sign: 'popsicle' },
-  { id: 'photo', x0: 41.8, x1: 48.4, color: '#c9a7f5', sign: 'milk' },
+  { id: 'frozen', x0: 36.8, x1: 41.8, color: '#9ad7f2', sign: 'ice_cream' },
+  { id: 'photo', x0: 41.8, x1: 48.4, color: '#c9a7f5', sign: 'icon:photo' },
 ];
 
 export const CAMERA_X_MIN = -7.6;
