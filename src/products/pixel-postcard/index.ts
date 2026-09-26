@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { Painter, shade } from '../../engine/Painter';
-import { voxelMesh, toonGradient } from '../../engine/voxel';
+import { toonGradient } from '../../engine/voxel';
+import { Kit } from '../../store/kit';
+import { Buddy } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import { ease } from '../../engine/tween';
 import { audio } from '../../engine/audio';
 import { LAYER_NO_OUTLINE } from '../../engine/PixelRenderer';
@@ -9,15 +12,12 @@ import { atlasBox } from '../common/box';
 import { canvasTexture, qrDecal } from '../common/qrLayout';
 import { Particles } from '../common/props';
 import { composePoster, posterScale } from '../common/poster';
-import { CAM, INK, PHOTO, POSTCARD_FLAVORS, cameraLabel, cameraVoxels, drawCaption, fitCaption, flashBurst, photoBack, photoFront, pictureCanvas } from './art';
+import { CAM, FRONT_TEX, INK, PHOTO, POSTCARD_FLAVORS, bandDecal, drawCaption, fitCaption, flashBurst, frontDecal, photoBack, photoFront, pictureCanvas } from './art';
 import { postcardPosterArt } from './poster';
 
-const S = CAM.scale;
-const cvx = (x: number) => (x - CAM.sx / 2) * S;
-const cvz = (z: number) => (z - CAM.sz / 2) * S;
-const CAM_TOP = CAM.sy * S;
-const FRONT_Z = cvz(16);
-const SLOT_Z = cvz(CAM.slotZ + 0.5);
+const CAM_TOP = CAM.h;
+const FRONT_Z = CAM.front;
+const SLOT_Z = CAM.slotZ;
 const PHOTO_W = 1.6;
 const PX = PHOTO_W / PHOTO.w;
 const PHOTO_H = PHOTO.h * PX;
@@ -47,28 +47,62 @@ function withMipmaps(obj: THREE.Object3D) {
   return obj;
 }
 
+/** The instant camera: a soft rounded body with a grip band, a big stacked lens and painted details. */
 function cameraModel(f: Flavor, scale = 1) {
   const group = new THREE.Group();
-  group.add(voxelMesh(cameraVoxels(f), { scale: S * scale, anchor: 'bottom-center' }));
-  const label = new THREE.Mesh(new THREE.PlaneGeometry(0.34 * scale, 0.19125 * scale), new THREE.MeshToonMaterial({ map: cameraLabel(f).texture(), gradientMap: toonGradient() }));
-  label.position.set(cvx(30.9) * scale, 3.6 * S * scale, (FRONT_Z + 0.003) * scale);
-  group.add(label);
+  const inner = new THREE.Group();
+  inner.scale.setScalar(scale);
+  group.add(inner);
+  const { w, h, d, front } = CAM;
+  const zc = front - d / 2;
+  const k = new Kit();
+  k.rbox(w, h, d, 0.14, f.c.body, 0, 0, zc);
+  k.rbox(w + 0.03, CAM.band - 0.02, d + 0.03, 0.1, f.c.band, 0, 0.02, zc);
+  // photo slot along the top, strap lugs on the sides
+  k.rbox(w - 0.3, 0.014, 0.06, 0.006, shade(f.c.band, -0.4), 0, h - 0.008, SLOT_Z);
+  for (const side of [-1, 1]) k.rbox(0.05, 0.18, 0.16, 0.02, '#c9ced6', side * (w / 2 + 0.01), 0.72, zc);
+  // lens: accent ring, dark base, silver barrel, glass
+  const L = CAM.lens;
+  const disc = (r: number, len: number, color: string, z: number) => k.add(new THREE.CylinderGeometry(r, r, len, 36), color, L.x, L.y, z, Math.PI / 2);
+  disc(L.r, 0.02, f.c.accent, front + 0.01);
+  disc(0.36, 0.06, '#34343f', front + 0.03);
+  disc(0.31, 0.12, '#d9dee6', front + 0.08);
+  disc(0.316, 0.025, '#b9bfca', front + 0.1);
+  disc(0.235, 0.02, INK, front + 0.145);
+  disc(0.18, 0.02, '#23346e', front + 0.15);
+  disc(0.08, 0.02, '#35509a', front + 0.155);
+  inner.add(k.build());
+  const glint = new THREE.Mesh(new THREE.CircleGeometry(0.035, 10), new THREE.MeshBasicMaterial({ color: '#ffffff' }));
+  glint.position.set(L.x - 0.08, L.y + 0.08, front + 0.167);
+  inner.add(glint);
+  // painted front (label window, viewfinder) and band (rainbow + brand)
+  const decal = (tex: THREE.Texture, pw: number, ph: number, x: number, y: number, z: number) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph), new THREE.MeshToonMaterial({ map: tex, gradientMap: toonGradient(), alphaTest: 0.5 }));
+    m.position.set(x, y, z);
+    inner.add(m);
+  };
+  const T = FRONT_TEX;
+  decal(frontDecal(f).texture(), T.x1 - T.x0, T.y1 - T.y0, (T.x0 + T.x1) / 2, (T.y0 + T.y1) / 2, front + 0.002);
+  decal(bandDecal(f).texture(), 1.56, 0.2, 0, 0.16, front + 0.017);
+  // flash window (lights up) with ridges
+  const F = CAM.flash;
+  const frame = new THREE.Mesh(new THREE.PlaneGeometry(F.w + 0.03, F.h + 0.03), new THREE.MeshBasicMaterial({ color: shade(f.c.body, -0.3) }));
+  frame.position.set(F.x, F.y, front + 0.002);
   const flashMat = new THREE.MeshBasicMaterial({ color: '#d8d9e4' });
-  const flash = new THREE.Mesh(new THREE.PlaneGeometry(7 * S * scale, 3.6 * S * scale), flashMat);
-  flash.position.set(cvx(5.5) * scale, 17 * S * scale, (FRONT_Z + 0.003) * scale);
-  group.add(flash);
-  // ridges on the flash window
+  const flash = new THREE.Mesh(new THREE.PlaneGeometry(F.w, F.h), flashMat);
+  flash.position.set(F.x, F.y, front + 0.003);
+  inner.add(frame, flash);
   const ridgeMat = new THREE.MeshBasicMaterial({ color: '#b9bccb' });
   for (let i = 0; i < 3; i++) {
-    const ridge = new THREE.Mesh(new THREE.PlaneGeometry(7 * S * scale, 0.006 * scale), ridgeMat);
-    ridge.position.set(cvx(5.5) * scale, (15.8 + i * 1.2) * S * scale, (FRONT_Z + 0.004) * scale);
-    group.add(ridge);
+    const ridge = new THREE.Mesh(new THREE.PlaneGeometry(F.w, 0.008), ridgeMat);
+    ridge.position.set(F.x, F.y - F.h * 0.3 + i * F.h * 0.3, front + 0.004);
+    inner.add(ridge);
   }
-  const button = new THREE.Mesh(new THREE.CylinderGeometry(0.075 * scale, 0.075 * scale, 0.06 * scale, 14), new THREE.MeshToonMaterial({ color: f.c.accent, gradientMap: toonGradient() }));
-  button.rotation.x = Math.PI / 2;
-  button.position.set(cvx(31) * scale, 9.5 * S * scale, (FRONT_Z + 0.03) * scale);
+  // shutter button on top
+  const button = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.086, 0.06, 18), new THREE.MeshToonMaterial({ color: f.c.accent, gradientMap: toonGradient() }));
+  button.position.set(0.62, h + 0.03, zc + 0.06);
   button.castShadow = true;
-  group.add(button);
+  inner.add(button);
   return { group, flashMat, flash, button, ridgeMat };
 }
 
@@ -131,7 +165,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   // --- flash effects: starburst, a full-screen white-out and a lingering glow
   const burstMat = new THREE.MeshBasicMaterial({ map: flashBurst().texture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
   const burst = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), burstMat);
-  burst.position.set(cvx(5.5), 17 * S, FRONT_Z + 0.06);
+  burst.position.set(CAM.flash.x, CAM.flash.y, FRONT_Z + 0.06);
   burst.layers.set(LAYER_NO_OUTLINE);
   burst.visible = false;
   camera.add(burst);
@@ -153,6 +187,29 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
   let time = 0;
   let done = false;
   let idle = true;
+  let scan = false;
+
+  // snappy, the photo buddy, pops up beside the developed photo
+  const snappyAt = new THREE.Vector3(1.45, 0, 0.55);
+  const snappy = new Buddy(CAST.snappy, 72);
+  snappy.billboard = true;
+  snappy.position.copy(snappyAt);
+  snappy.visible = false;
+  root.add(snappy);
+  let snappyNext = 4;
+  function popSnappy(animated: boolean) {
+    snappy.position.copy(snappyAt);
+    snappy.visible = !scan;
+    if (!animated) {
+      snappy.scale.setScalar(1);
+      return;
+    }
+    snappy.scale.setScalar(0.01);
+    void tweens.tween(0.5, (t) => {
+      snappy.scale.setScalar(Math.max(0.01, ease.outBack(t)));
+      snappy.position.y = snappyAt.y + Math.sin(t * Math.PI) * 0.35;
+    }, ease.linear, tg).then(() => void snappy.cheer());
+  }
 
   function develop(t: number) {
     if (t < 0.5) _c.copy(DARK).lerp(SEPIA, t / 0.5);
@@ -162,7 +219,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     decalMat.opacity = q;
   }
 
-  const buttonZ = cam.button.position.z;
+  const buttonY = cam.button.position.y;
   /** Photo back inside the camera, undeveloped (so reveal() can replay after finish()). */
   function resetIdle() {
     camera.add(card);
@@ -174,9 +231,10 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     decalMat.needsUpdate = true;
     writeCaption(0);
     cam.flashMat.color.set('#d8d9e4');
-    cam.button.position.z = buttonZ;
+    cam.button.position.y = buttonY;
     burst.visible = whiteout.visible = false;
     camera.rotation.z = 0;
+    snappy.visible = false;
     done = false;
   }
 
@@ -198,14 +256,14 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     }, ease.linear, tg);
     camera.rotation.z = 0;
     audio.play('clack');
-    const bz = cam.button.position.z;
-    await tweens.tween(0.12, (t) => (cam.button.position.z = bz - t * 0.025), ease.outQuad, tg);
+    const by = cam.button.position.y;
+    await tweens.tween(0.12, (t) => (cam.button.position.y = by - t * 0.03), ease.outQuad, tg);
     // FLASH!
     audio.play('zap');
     audio.play('pop', { rate: 1.6 });
     cam.flashMat.color.set('#ffffff');
     burst.visible = whiteout.visible = true;
-    void tweens.tween(0.12, (t) => (cam.button.position.z = bz - 0.025 * (1 - t)), ease.linear, tg);
+    void tweens.tween(0.12, (t) => (cam.button.position.y = by - 0.03 * (1 - t)), ease.linear, tg);
     await tweens.tween(0.06, (t) => {
       whiteMat.opacity = 0.9 * t;
       burstMat.opacity = t;
@@ -270,6 +328,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
       _v.copy(QR_LOCAL).applyMatrix4(card.matrixWorld);
       sparks.burst(_v, { count: 14, color: ['#ffffff', '#fff3b0', f.c.accent], speed: 1.2, up: 1.4, size: 0.035, life: 0.9, gravity: 1.5 });
     }
+    popSnappy(true);
     // the camera does a happy little hop
     await tweens.tween(0.5, (t) => {
       const s = Math.sin(t * Math.PI * 2) * (1 - t);
@@ -294,6 +353,7 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     decalMat.transparent = false;
     decalMat.needsUpdate = true;
     writeCaption(caption.length);
+    popSnappy(false);
     done = true;
   }
 
@@ -303,8 +363,18 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
     finish,
     actionLabel: 'Say cheese!',
     hero: { target: new THREE.Vector3(0.0, 0.66, 0.15), distance: 5.0, yaw: 0.05, pitch: 0.36 },
-    update(dt) {
+    // the cream label window on the camera front, right of the lens
+    label: { object: camera, position: new THREE.Vector3(CAM.window.x, CAM.window.y, FRONT_Z + 0.004), size: [0.68, 0.42] },
+    update(dt, _time, cam3) {
       time += dt;
+      snappy.update(dt, cam3);
+      if (done && !scan && snappy.visible) {
+        snappyNext -= dt;
+        if (snappyNext < 0) {
+          snappyNext = 4 + Math.random() * 3;
+          void (Math.random() < 0.5 ? snappy.wave() : snappy.hop());
+        }
+      }
       sparks.update(dt);
       if (idle) {
         // the camera bobs a little, like it's excited to take a picture
@@ -320,8 +390,10 @@ function createShowcase(ctx: ProductContext): ShowcaseItem {
       return { center, normal, size: QR_SIZE, up };
     },
     setScanMode(on) {
+      scan = on;
       // the photo must be fully developed before anyone scans it
       if (on && !done) finish();
+      snappy.visible = done && !on;
     },
     dispose() {
       picTex.dispose();

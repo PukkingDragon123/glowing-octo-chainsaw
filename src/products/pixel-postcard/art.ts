@@ -1,6 +1,7 @@
 import { Painter, shade } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
-import { VoxelGrid } from '../../engine/voxel';
+import { buddyPortrait, type BuddySpec, type Pose } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor } from '../types';
 import type { PixelArt } from '../../qr/pixelCodec';
 import { pixelArtCanvas } from '../../qr/pixelCapture';
@@ -131,17 +132,6 @@ export function drawCaption(target: Painter, text: string, chars: number) {
   target.text(text.slice(0, chars), 0, 1, { font: FONT_BIG, color: PEN });
 }
 
-/** Small printed badge on the camera front (two lines). */
-export function cameraLabel(f: Flavor): Painter {
-  const p = new Painter(32, 18);
-  p.clear(f.c.band);
-  const light = f.id === 'classic' ? INK : '#ffffff';
-  p.text('PIXEL', 16, 3, { font: FONT_TINY, color: light, align: 'center' });
-  p.rect(5, 9, 22, 1, shade(f.c.band, -0.15));
-  p.text('INSTANT', 16, 11, { font: FONT_TINY, color: f.id === 'classic' ? '#ff5d73' : f.id === 'midnight' ? f.c.accent : '#fff6c8', align: 'center' });
-  return p;
-}
-
 /** White starburst for the flash. */
 export function flashBurst(): Painter {
   const p = new Painter(32, 32);
@@ -152,66 +142,86 @@ export function flashBurst(): Painter {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Voxels
+// The camera (rounded shapes + painted decals)
 
-/** Camera grid: body occupies z 0..15, the lens pokes out to z 19. */
-export const CAM = { sx: 36, sy: 21, sz: 20, scale: 0.05, lensX: 12.5, lensY: 10.5, slotZ: 3 };
+/**
+ * Instant camera, world units: body w×h×d standing on y = 0 with its front face at z = `front`;
+ * the photo slot runs along the top at z = `slotZ`. The lens sits on the left, the label window
+ * (where the shop sticker goes) on the right, the flash and viewfinder along the top.
+ */
+export const CAM = {
+  w: 1.8,
+  h: 1.2,
+  d: 0.8,
+  front: 0.3,
+  slotZ: -0.325,
+  band: 0.3,
+  lens: { x: -0.4, y: 0.62, r: 0.42 },
+  flash: { x: 0.52, y: 1.04, w: 0.36, h: 0.12 },
+  window: { x: 0.41, y: 0.63, w: 0.7, h: 0.52 },
+};
 
-export function cameraVoxels(f: Flavor): VoxelGrid {
-  const g = new VoxelGrid(CAM.sx, CAM.sy, CAM.sz);
-  const body = f.c.body;
-  const band = f.c.band;
-  // rounded body
-  const r = 2;
-  for (let z = 0; z <= 15; z++)
-    for (let y = 0; y <= 20; y++)
-      for (let x = 0; x <= 35; x++) {
-        const dx = Math.max(r - x, 0, x - (35 - r));
-        const dy = Math.max(r - y, 0, y - (20 - r));
-        const dz = Math.max(r - z, 0, z - (15 - r));
-        if (dx * dx + dy * dy + dz * dz <= r * r + 0.01) g.set(x, y, z, y <= 5 ? band : body);
-      }
-  // film slot along the top (a real groove so the photo can come out)
-  for (let x = 2; x <= 33; x++) {
-    g.set(x, 20, CAM.slotZ, null).set(x, 19, CAM.slotZ, null);
-    g.set(x, 20, CAM.slotZ - 1, shade(band, -0.2)).set(x, 20, CAM.slotZ + 1, shade(band, -0.2));
-  }
-  // rainbow stripe on the front
+/** Painted details above the band, in 100 px per world unit, transparent elsewhere. */
+export const FRONT_TEX = { x0: -0.8, x1: 0.8, y0: CAM.band + 0.02, y1: CAM.h - 0.1, ppu: 100 };
+
+/** A mascot at packaging size: body, face and limbs shrink together (the pixel style stays). */
+function miniSpec(spec: BuddySpec, k: number): BuddySpec {
+  const L = spec.limbs ?? { color: '#58a88f', tip: '#f3d270' };
+  return {
+    ...spec,
+    body: { ...spec.body, w: Math.round(spec.body.w * k), h: Math.round(spec.body.h * k) },
+    eyes: { ...spec.eyes, gap: spec.eyes?.gap !== undefined ? spec.eyes.gap * k : undefined, r: spec.eyes?.r !== undefined ? Math.max(1.5, spec.eyes.r * k) : undefined },
+    mouth: { ...spec.mouth, w: spec.mouth?.w !== undefined ? Math.round(spec.mouth.w * k) : undefined },
+    limbs: { ...L, arm: Math.round((L.arm ?? 13) * k), leg: Math.round((L.leg ?? 9) * k), thick: Math.max(4, Math.round((L.thick ?? 6) * k)) },
+  };
+}
+
+/** Snappy, the instant-photo buddy, as a flat portrait (`k` = size relative to the full mascot). */
+export function snappyArt(k: number, pose: Pose = {}): Painter {
+  return buddyPortrait(k === 1 ? CAST.snappy : miniSpec(CAST.snappy, k), pose).toPainter();
+}
+
+/** Front decal: the label window (snappy waving on cream) and the viewfinder. */
+export function frontDecal(f: Flavor): Painter {
+  const { x0, x1, y0, y1, ppu } = FRONT_TEX;
+  const W = Math.round((x1 - x0) * ppu);
+  const H = Math.round((y1 - y0) * ppu);
+  const p = new Painter(W, H);
+  const X = (x: number) => Math.round((x - x0) * ppu);
+  const Y = (y: number) => Math.round((y1 - y) * ppu);
+  // label window
+  const win = CAM.window;
+  const wx = X(win.x - win.w / 2);
+  const wy = Y(win.y + win.h / 2);
+  const ww = Math.round(win.w * ppu);
+  const wh = Math.round(win.h * ppu);
+  p.roundRect(wx - 2, wy - 2, ww + 4, wh + 4, 8, shade(f.c.band, -0.25));
+  p.roundRect(wx, wy, ww, wh, 7, f.c.paper);
+  p.roundRect(wx + 3, wy + 3, ww - 6, wh - 6, 5, shade(f.c.paper, -0.05));
+  for (let x = wx + 8; x < wx + ww - 8; x += 7) p.px(x, wy + wh - 5, shade(f.c.paper, -0.14));
+  const snappy = snappyArt(0.72, { armL: 0.5, armR: 2.6 });
+  p.blit(snappy, wx + Math.round(ww * 0.33 - snappy.w / 2), wy + wh - 4 - snappy.h);
+  p.text('SAY', wx + Math.round(ww * 0.76), wy + 14, { font: FONT_BIG, bold: true, color: f.c.accent, outline: INK, align: 'center' });
+  p.text('CHEESE!', wx + Math.round(ww * 0.76), wy + 25, { font: FONT_TINY, color: INK, align: 'center' });
+  p.sprite(['.#.#.', '#####', '#####', '.###.', '..#..'], wx + Math.round(ww * 0.76) - 2, wy + 33, { '#': f.c.accent });
+  // viewfinder
+  const vx = X(0.12);
+  const vy = Y(1.08);
+  p.roundRect(vx - 1, vy - 1, 16, 12, 3, shade(f.c.body, -0.3));
+  p.roundRect(vx, vy, 14, 10, 3, INK);
+  p.rect(vx + 3, vy + 2, 3, 2, '#9fd8ff').px(vx + 3, vy + 2, '#ffffff');
+  return p;
+}
+
+/** Band decal (the grip band along the bottom): a rainbow trailing from the lens and the brand. */
+export function bandDecal(f: Flavor): Painter {
+  const W = 156;
+  const H = 20;
+  const p = new Painter(W, H);
   const stripe = ['#ff5d73', '#ffb13b', '#ffe066', '#3ddc84', '#4cc9f0'];
-  for (let y = 0; y <= 20; y++)
-    for (let i = 0; i < stripe.length; i++) {
-      const x = 22 + i;
-      for (let z = 15; z >= 12; z--)
-        if (g.filled(x, y, z)) {
-          g.set(x, y, z, stripe[i]);
-          break;
-        }
-    }
-  // lens: base ring, silver barrel, dark glass with a glint
-  const { lensX, lensY } = CAM;
-  for (let y = 0; y < CAM.sy; y++)
-    for (let x = 0; x < CAM.sx; x++) {
-      const d = Math.hypot(x + 0.5 - lensX, y + 0.5 - lensY);
-      if (d <= 7.2) g.set(x, y, 16, '#34343f');
-      if (d <= 6.2) {
-        g.box(x, y, 16, x, y, 18, d > 5.2 ? '#b9bfca' : '#d9dee6');
-      }
-      if (d <= 4.6) g.set(x, y, 19, INK).set(x, y, 18, INK);
-      if (d <= 3.3) g.set(x, y, 19, null).set(x, y, 18, d < 1.3 ? '#35509a' : '#23346e');
-    }
-  g.set(11, 12, 18, '#9fd8ff').set(10, 12, 18, '#ffffff').set(11, 13, 18, '#9fd8ff');
-  // accent ring around the lens on the body
-  for (let y = 0; y < CAM.sy; y++)
-    for (let x = 0; x < CAM.sx; x++) {
-      const d = Math.hypot(x + 0.5 - lensX, y + 0.5 - lensY);
-      if (d > 7.2 && d <= 8.2 && g.filled(x, y, 15)) g.set(x, y, 15, f.c.accent);
-    }
-  // viewfinder window (top right)
-  g.box(28, 15, 15, 32, 18, 15, INK);
-  g.box(29, 17, 15, 29, 17, 15, '#9fd8ff');
-  g.box(27, 14, 15, 33, 14, 15, shade(body, -0.15));
-  // strap lugs on the sides
-  g.box(0, 14, 6, 0, 16, 9, '#c9ced6');
-  g.box(35, 14, 6, 35, 16, 9, '#c9ced6');
-  return g;
+  stripe.forEach((c, i) => p.rect(0, 2 + i * 3, 72, 3, c));
+  const light = f.id === 'classic' || f.id === 'mint' ? INK : '#ffffff';
+  p.text('PIXEL', 112, 2, { font: FONT_BIG, bold: true, color: light, align: 'center' });
+  p.text('INSTANT', 112, 11, { font: FONT_TINY, color: f.c.accent, outline: f.id === 'classic' ? undefined : shade(f.c.band, -0.3), align: 'center' });
+  return p;
 }
