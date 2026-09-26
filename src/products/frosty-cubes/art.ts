@@ -1,7 +1,8 @@
 import { Painter, shade } from '../../engine/Painter';
 import { FONT_BIG, FONT_TINY } from '../../engine/pixelFont';
 import { rng } from '../../engine/tween';
-import { VoxelGrid } from '../../engine/voxel';
+import { buddyPortrait, type BuddySpec, type Pose } from '../../art/buddy';
+import { CAST } from '../../art/cast';
 import type { Flavor } from '../types';
 
 export const INK = '#1d1b26';
@@ -36,10 +37,10 @@ export const ICE_SETS: Record<string, IceColor[]> = {
 };
 
 export const FROSTY_FLAVORS: Flavor[] = [
-  { id: 'classic', name: 'Blueberry Ice', c: { band: '#2f6fd8', bandDark: '#1f4fa8', accent: '#ffd23f', tint: '#cfe8ff', scarf: '#ff5d73' } },
-  { id: 'blueraz', name: 'Blue Raspberry', c: { band: '#1f9bf0', bandDark: '#1470b8', accent: '#ff7ac0', tint: '#cdeeff', scarf: '#ffd23f' } },
-  { id: 'cola', name: 'Cola Ice', c: { band: '#c0392b', bandDark: '#8e2418', accent: '#ffd23f', tint: '#ffe9d6', scarf: '#2f6fd8' } },
-  { id: 'grape', name: 'Grape Soda', c: { band: '#7b3fc8', bandDark: '#582a96', accent: '#7ee0a0', tint: '#eadcff', scarf: '#ffd23f' } },
+  { id: 'classic', name: 'Blueberry Ice', c: { band: '#2f6fd8', bandDark: '#1f4fa8', accent: '#ffd23f', tint: '#cfe8ff' } },
+  { id: 'blueraz', name: 'Blue Raspberry', c: { band: '#1f9bf0', bandDark: '#1470b8', accent: '#ff7ac0', tint: '#cdeeff' } },
+  { id: 'cola', name: 'Cola Ice', c: { band: '#c0392b', bandDark: '#8e2418', accent: '#ffd23f', tint: '#ffe9d6' } },
+  { id: 'grape', name: 'Grape Soda', c: { band: '#7b3fc8', bandDark: '#582a96', accent: '#7ee0a0', tint: '#eadcff' } },
 ];
 
 export function iceSet(f: Flavor) {
@@ -48,34 +49,21 @@ export function iceSet(f: Flavor) {
 
 export const BAG = { w: 96, h: 128 };
 
-/** Pixel penguin mascot (~26×30 px). */
-export function drawPenguin(p: Painter, x: number, y: number, f: Flavor, wave = true) {
-  const L = new Painter(30, 32);
-  const body = '#26315e';
-  // flippers
-  if (wave) {
-    L.poly([[4, 16], [0, 8], [3, 7], [8, 14]], body);
-  } else L.poly([[4, 14], [1, 24], [5, 23], [8, 16]], body);
-  L.poly([[24, 14], [28, 22], [25, 24], [21, 17]], body);
-  // body + belly
-  L.ellipse(15, 18, 10, 12.5, body);
-  L.ellipse(15, 21, 7, 9, '#ffffff');
-  L.ellipse(15, 11, 7.5, 6, '#ffffff');
-  L.rect(8, 5, 14, 3, body);
-  // eyes, cheeks, beak
-  L.rect(11, 9, 2, 3, INK).px(11, 9, '#ffffff');
-  L.rect(18, 9, 2, 3, INK).px(18, 9, '#ffffff');
-  L.px(9, 13, '#ff9fb5').px(10, 13, '#ff9fb5').px(20, 13, '#ff9fb5').px(21, 13, '#ff9fb5');
-  L.poly([[13, 13], [18, 13], [15.5, 16]], '#ff9f1c');
-  // scarf
-  L.rect(8, 17, 15, 3, f.c.scarf);
-  L.rect(19, 19, 3, 6, f.c.scarf);
-  L.px(9, 18, shade(f.c.scarf, 0.2)).px(12, 18, shade(f.c.scarf, 0.2)).px(15, 18, shade(f.c.scarf, 0.2));
-  // feet
-  L.ellipse(11, 30, 3.5, 1.6, '#ff9f1c');
-  L.ellipse(19, 30, 3.5, 1.6, '#ff9f1c');
-  L.outline(INK);
-  p.blit(L, x - 1, y - 1);
+/** A mascot at packaging size: body, face and limbs shrink together (the pixel style stays). */
+function miniSpec(spec: BuddySpec, k: number): BuddySpec {
+  const L = spec.limbs ?? { color: '#58a88f', tip: '#f3d270' };
+  return {
+    ...spec,
+    body: { ...spec.body, w: Math.round(spec.body.w * k), h: Math.round(spec.body.h * k) },
+    eyes: { ...spec.eyes, gap: spec.eyes?.gap !== undefined ? spec.eyes.gap * k : undefined, r: spec.eyes?.r !== undefined ? Math.max(1.5, spec.eyes.r * k) : undefined },
+    mouth: { ...spec.mouth, w: spec.mouth?.w !== undefined ? Math.round(spec.mouth.w * k) : undefined },
+    limbs: { ...L, arm: Math.round((L.arm ?? 13) * k), leg: Math.round((L.leg ?? 9) * k), thick: Math.max(4, Math.round((L.thick ?? 6) * k)) },
+  };
+}
+
+/** Cubey, the ice-cube buddy, as a flat portrait (`k` = size relative to the full mascot). */
+export function cubeyArt(k: number, pose: Pose = {}): Painter {
+  return buddyPortrait(k === 1 ? CAST.cubey : miniSpec(CAST.cubey, k), pose).toPainter();
 }
 
 function snowflake(p: Painter, x: number, y: number, c: string) {
@@ -135,8 +123,9 @@ export function bagFront(f: Flavor, withCubes = false): Painter {
   p.text(f.name.toUpperCase(), w / 2 + 12, h - 17, { font: FONT_TINY, color: '#ffffff', outline: INK, align: 'center' });
   p.roundRect(40, h - 10, 50, 7, 2, '#ffffff');
   p.text('PURE ICE', 65, h - 9, { font: FONT_TINY, color: f.c.bandDark, align: 'center' });
-  // mascot waving from the corner
-  drawPenguin(p, 2, h - 40, f);
+  // cubey waving from the corner, feet on the bottom band
+  const cubey = cubeyArt(0.62, { armL: 0.5, armR: 2.5 });
+  p.blit(cubey, 1, h - 5 - cubey.h);
   return p;
 }
 
@@ -218,40 +207,6 @@ export function iceTile(): Painter {
   return p;
 }
 
-/** Penguin figure (≈ 16×22×14 voxels) in a scarf, cheering. */
-export function penguinVoxels(f: Flavor): VoxelGrid {
-  const g = new VoxelGrid(20, 24, 16);
-  const body = '#26315e';
-  const cx = 10;
-  // feet
-  g.box(cx - 5, 0, 8, cx - 2, 1, 13, '#ff9f1c');
-  g.box(cx + 1, 0, 8, cx + 4, 1, 13, '#ff9f1c');
-  // body
-  g.ellipsoid(cx, 9, 8, 7, 8.5, 6.5, body);
-  g.ellipsoid(cx, 8.5, 10.5, 5, 6.5, 4.5, '#ffffff');
-  // head
-  g.ellipsoid(cx, 17.5, 8, 6, 5.5, 5.5, body);
-  g.ellipsoid(cx, 17, 10.3, 4.5, 4, 3.2, '#ffffff');
-  // eyes + cheeks + beak
-  g.box(cx - 3, 17, 13, cx - 2, 18, 13, INK);
-  g.box(cx + 2, 17, 13, cx + 3, 18, 13, INK);
-  g.set(cx - 3, 18, 13, '#ffffff').set(cx + 2, 18, 13, '#ffffff');
-  g.box(cx - 5, 15, 12, cx - 4, 15, 12, '#ff9fb5');
-  g.box(cx + 4, 15, 12, cx + 5, 15, 12, '#ff9fb5');
-  g.box(cx - 1, 15, 13, cx + 1, 16, 15, '#ff9f1c');
-  // scarf
-  g.box(cx - 6, 12, 3, cx + 6, 13, 13, f.c.scarf);
-  g.paint((x, y, z) => (y >= 12 && y <= 13 && (x + z) % 3 === 0 && x > cx - 7 && x < cx + 7 ? shade(f.c.scarf, 0.2) : null));
-  g.box(cx + 3, 7, 13, cx + 5, 11, 13, f.c.scarf);
-  // flippers up (cheering)
-  g.box(cx - 9, 10, 7, cx - 7, 16, 9, body);
-  g.box(cx + 7, 10, 7, cx + 9, 16, 9, body);
-  // bobble hat
-  g.box(cx - 5, 22, 5, cx + 5, 23, 11, f.c.band);
-  g.box(cx - 1, 23, 7, cx + 1, 23, 9, '#ffffff');
-  return g;
-}
-
 // -------------------------------------------------------------------------------------------------
 // Poster
 
@@ -276,8 +231,9 @@ export function posterArt(f: Flavor): Painter {
   // spare cubes scattered around the tray
   const set = iceSet(f);
   for (const [cx, cy] of [[20, 132], [28, 138], [120, 60], [126, 70], [116, 140]] as const) drawCube(p, cx, cy, 7, set[Math.floor(r() * set.length)].fun);
-  // penguin
-  drawPenguin(p, 106, 126, f);
+  // cubey cheering in the corner
+  const cubey = cubeyArt(0.75, { armL: 2.6, armR: 2.6, eyes: 'happy', mouth: 'open' });
+  p.blit(cubey, w - 2 - cubey.w, h - 17 - cubey.h);
   // badge
   p.burst(16, 46, 12, 12, INK);
   p.burst(16, 46, 11, 12, f.c.accent);
