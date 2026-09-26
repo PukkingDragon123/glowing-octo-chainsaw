@@ -22,7 +22,7 @@ export function today(d = new Date()) {
 }
 
 function fresh(): SaveData {
-  return { owned: [], memberUntil: 0, adPass: {}, sound: true, music: false, made: 0, visits: 0, hints: [] };
+  return { owned: [], memberUntil: 0, adPass: {}, sound: true, music: true, made: 0, visits: 0, hints: [] };
 }
 
 type Listener = (s: SaveData) => void;

@@ -73,6 +73,7 @@ export class App {
     this.pixel.iris.mask = mask;
     this.pixel.transitionColor.set('#f59ab6');
     audio.setMuted(!this.state.data.sound);
+    audio.musicOn = this.state.data.sound && this.state.data.music;
 
     this.store = new Store(this.pixel.canvas, this.tweens);
     this.store.owns = (p) => this.state.owns(p);
@@ -90,7 +91,7 @@ export class App {
     this.hints = new Hints(root);
 
     this.backBtn = h('button', { class: 'kb-btn back', 'aria-label': 'Back to the aisles', hidden: true, onclick: () => this.back() }, iconImg('back', 3, { fill: '#5a3a26' }));
-    this.soundBtn = h('button', { class: 'kb-btn sound', 'aria-label': 'Sound on or off', onclick: () => this.toggleSound() }, iconImg(this.state.data.sound ? 'soundOn' : 'soundOff', 2, { fill: '#5a3a26' }));
+    this.soundBtn = h('button', { class: 'kb-btn sound', 'aria-label': 'Music and sound', onclick: () => this.toggleSound() }, iconImg(this.soundIcon(), 2, { fill: '#5a3a26' }));
     this.scanFrame = h('div', { class: 'scan-frame', hidden: true }, h('i'), h('i'), h('i'), h('i'));
     this.fileInput = h('input', { type: 'file', accept: 'image/*', hidden: true, onchange: () => void this.fileChosen() });
     root.append(this.backBtn, this.soundBtn, this.scanFrame, this.fileInput);
@@ -120,13 +121,25 @@ export class App {
     this.showcase.resize(this.pixel.aspect);
   }
 
+  private soundIcon() {
+    const d = this.state.data;
+    return !d.sound ? 'soundOff' : d.music ? 'music' : 'soundOn';
+  }
+
+  /** One button cycles: music + sounds → sounds only → muted → music + sounds. */
   private toggleSound() {
     audio.unlock();
-    const on = !this.state.data.sound;
-    this.state.setSound(on);
-    audio.setMuted(!on);
-    this.soundBtn.replaceChildren(iconImg(on ? 'soundOn' : 'soundOff', 2, { fill: '#5a3a26' }));
-    if (on) audio.play('blip');
+    const d = this.state.data;
+    if (d.sound && d.music) this.state.setMusic(false);
+    else if (d.sound) this.state.setSound(false);
+    else {
+      this.state.setSound(true);
+      this.state.setMusic(true);
+    }
+    audio.setMuted(!d.sound);
+    audio.setMusic(d.sound && d.music);
+    this.soundBtn.replaceChildren(iconImg(this.soundIcon(), 2, { fill: '#5a3a26' }));
+    if (d.sound) audio.play('blip');
   }
 
   private onKey(e: KeyboardEvent) {
@@ -171,6 +184,7 @@ export class App {
   async walkIn(fast: boolean) {
     if (this.mode !== 'title') return;
     audio.unlock();
+    if (this.state.data.sound && this.state.data.music) audio.setMusic(true);
     this.hints.hideAll();
     this.mode = 'walking';
     if (fast) this.store.skipIntro();
@@ -287,6 +301,40 @@ export class App {
     this.showcase.clerk.hideReceipt();
     this.sticker.attach(item.label ?? this.defaultLabel(item.root));
     this.sticker.setContent(this.content, this.status);
+    this.plop(item.root);
+  }
+
+  /** The unopened pack drops onto the counter with a squashy bounce and a puff. */
+  private plopReset: (() => void) | null = null;
+
+  private plop(root: THREE.Object3D) {
+    const run = this.revealRun;
+    const base = root.position.y;
+    this.plopReset = () => {
+      root.position.y = base;
+      root.scale.set(1, 1, 1);
+      this.plopReset = null;
+    };
+    void this.tweens
+      .tween(0.5, (t) => {
+        if (this.revealRun !== run || this.revealing) return;
+        const fall = 1 - ease.outBounce(t);
+        root.position.y = base + fall * 0.45;
+        const squash = t > 0.35 && t < 0.6 ? Math.sin(((t - 0.35) / 0.25) * Math.PI) * 0.12 : 0;
+        root.scale.set(1 + squash, 1 - squash, 1 + squash);
+      }, undefined, 'item')
+      .then(() => {
+        if (this.revealRun !== run) return;
+        root.position.y = base;
+        root.scale.set(1, 1, 1);
+      });
+    window.setTimeout(() => {
+      if (this.revealRun !== run) return;
+      audio.play('pop', { rate: 0.8 });
+      const box = new THREE.Box3().setFromObject(root);
+      const c = box.getCenter(new THREE.Vector3()).setY(0.05);
+      this.showcase.sparkles.burst('sparkle', c, { count: 4, speed: 1.2, up: 0.6, size: 0.1, life: 0.6, gravity: 1, jitter: 0.4 });
+    }, 180);
   }
 
   /** A sticker on the front of whatever the product built, when it didn't say where. */
@@ -487,6 +535,7 @@ export class App {
     if (this.revealed) this.buildItem();
     this.sticker.detach();
     this.setScanMode(false);
+    this.plopReset?.();
     const run = ++this.revealRun;
     this.revealing = true;
     await this.showcase.item!.reveal();
@@ -495,6 +544,7 @@ export class App {
   }
 
   private finishNow() {
+    this.plopReset?.();
     this.sticker.detach();
     this.showcase.item?.finish();
     this.onRevealed();
