@@ -81,6 +81,7 @@ export class App {
     this.store.onPick = (item) => this.pick(item);
     this.showcase = new Showcase(this.pixel.canvas, this.tweens);
     this.showcase.onClick = (ray) => this.stageClick(ray);
+    this.showcase.itemPointer = () => !this.sticker.attached;
 
     this.sticker = new Sticker(root, {
       onChange: () => this.contentChanged(),

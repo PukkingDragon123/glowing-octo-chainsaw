@@ -32,7 +32,8 @@ export interface BuddySpec {
   mouth?: { style?: MouthStyle; y?: number; w?: number };
   blush?: string | null;
   limbs?: { color: string; tip: string; arm?: number; leg?: number; thick?: number };
-  top?: { kind: TopKind; color?: string; color2?: string; color3?: string };
+  /** `size` scales the hats that follow the body width (captain, chef, crown, drip). */
+  top?: { kind: TopKind; color?: string; color2?: string; color3?: string; size?: number };
   ink?: string;
 }
 
@@ -333,12 +334,30 @@ export function drawLimb(spec: BuddySpec, kind: 'arm' | 'leg'): Bitmap {
   return drawLimbAt(spec, kind, 0).bmp;
 }
 
+/** Toppers that are worn rather than grown: they go in front of the head when they sink onto it. */
+const WORN: TopKind[] = ['captain', 'bow', 'chef', 'beanie', 'crown', 'cap', 'drip'];
+
+/**
+ * Where a topper's bottom edge rests, in rows down from the top of the body bitmap: a few rows in on
+ * a round head, lower on a pointy one (a star's tip) so a hat doesn't balance on a point.
+ */
+export function topperSeat(body: Bitmap, top: Bitmap): number {
+  const op = body.opaque();
+  const need = Math.min(top.w * 0.4, body.w * 0.45);
+  for (let y = 0; y < body.h; y++) {
+    let n = 0;
+    for (let x = 0; x < body.w; x++) if (op.get(x, y)) n++;
+    if (n >= need) return Math.max(5, y + 2);
+  }
+  return 5;
+}
+
 /** Hats, leaves and other toppers. Anchored at their bottom centre. */
 export function drawTop(spec: BuddySpec): Bitmap | null {
   const top = spec.top;
   if (!top || top.kind === 'none') return null;
   const ink = hex(spec.ink ?? BUDDY_INK);
-  const w = spec.body.w;
+  const w = spec.body.w * (top.size ?? 1);
   const c1 = top.color;
   const c2 = top.color2;
   let b: Bitmap;
@@ -542,7 +561,7 @@ export function buddyPortrait(spec: BuddySpec, pose: Pose = {}): Bitmap {
   parts.push({ bmp: body, x: 0, y: 0 });
   parts.push({ bmp: eyes, x: O + f.cx - eyes.w / 2, y: O + f.eyeY - eyes.h / 2 });
   parts.push({ bmp: mouth, x: O + f.cx - mouth.w / 2, y: O + f.mouthY - 2 });
-  if (top) parts.push({ bmp: top, x: body.w / 2 - top.w / 2, y: -top.h + 5 });
+  if (top) parts.push({ bmp: top, x: body.w / 2 - top.w / 2, y: topperSeat(body, top) - top.h });
   let x0 = 0;
   let y0 = 0;
   let x1 = body.w;
@@ -680,7 +699,9 @@ export class Buddy extends THREE.Group {
     const top = drawTop(spec);
     if (top) {
       this.topMesh = spriteMesh(top, { ppu, anchor: [0.5, 0], castShadow: true, doubleSided: true });
-      this.topMesh.position.set(0, (body.h - 5) / ppu, -Z * 0.3);
+      const seat = topperSeat(body, top);
+      const worn = seat > 5 && WORN.includes(spec.top!.kind);
+      this.topMesh.position.set(0, (body.h - seat) / ppu, worn ? Z * 0.8 : -Z * 0.3);
       this.bodyPivot.add(this.topMesh);
     }
     // invisible pick box

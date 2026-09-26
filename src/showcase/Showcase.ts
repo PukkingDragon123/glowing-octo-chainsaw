@@ -26,6 +26,8 @@ export class Showcase {
   active = false;
   /** Called with a click (tap without dragging) on the stage. */
   onClick: (ray: THREE.Ray, ndc: THREE.Vector2) => void = () => {};
+  /** False while the item's own pointer play (scratching etc.) should wait, e.g. under the sticker. */
+  itemPointer: () => boolean = () => true;
   private stage = new THREE.Group();
   private raycaster = new THREE.Raycaster();
   private ndc = new THREE.Vector2();
@@ -234,7 +236,7 @@ export class Showcase {
     if (kind === 'down') {
       this.down = { x: e.clientX, y: e.clientY, t: performance.now() };
       this.setNdc(e);
-      if (this.item?.pointer) {
+      if (this.item?.pointer && this.itemPointer()) {
         const hit = this.raycaster.intersectObject(this.item.root, true)[0] ?? null;
         if (this.item.pointer('down', hit, this.raycaster.ray)) {
           this.interacting = true;

@@ -368,8 +368,11 @@ export class Store {
     const pc = productById('pixel-postcard')!;
     kit.rbox(0.7, 0.9, 0.5, 0.08, PAL.lilac, 44.6, 0, -0.8);
     this.lockOn([this.addItem(pc, 44.6, 0.9, -0.8, 0.9)]);
+    // tapes stand on a low step in front of the TV cabinet (the TV fills the cabinet top)
     const ft = productById('flipbook-tape')!;
-    this.lockOn([0, 1, 2].map((i) => this.addItem(ft, 45.8 + i * 0.32, 0.7, -1.5, 0.85)));
+    kit.rbox(1.44, 0.34, 0.42, 0.07, PAL.woodDark, 46.4, 0, -1.19);
+    kit.rbox(1.36, 0.03, 0.36, 0.015, PAL.butter, 46.4, 0.335, -1.19);
+    this.lockOn([0, 1, 2].map((i) => this.addItem(ft, 46.0 + i * 0.4, 0.365, -1.2, 0.85, (i - 1) * -0.12)));
 
     // plants: sprite pots on the floor and little cacti on shelf tops
     const plant = plantSprite(2);

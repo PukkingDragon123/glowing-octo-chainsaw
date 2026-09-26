@@ -375,7 +375,7 @@ export const CAST: Record<string, BuddySpec> = {
     body: { shape: 'star', w: 44, h: 42, color: '#ffd23f', shade: '#e9a51c', light: '#fff6c4' },
     eyes: { y: 0.52, gap: 12, r: 1.8 },
     mouth: { y: 0.63, w: 10 },
-    top: { kind: 'crown' },
+    top: { kind: 'crown', size: 0.72 },
     limbs: { color: '#f08a2c', tip: '#fff6c4', arm: 10, leg: 8 },
     blush: '#ffa0a0',
   },
