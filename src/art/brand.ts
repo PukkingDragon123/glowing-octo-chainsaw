@@ -28,16 +28,20 @@ export function drawLogo(size = 32, o: { badge?: boolean; round?: boolean } = {}
     b.paint(bg, pink);
   }
   const head = new Mask(S, S);
-  head.union(ellipse(S, S, 16 * k, 18.5 * k, 9.5 * k, 7.2 * k));
-  // three gill fronds on each side, fanning up and out
-  const fronds: [number, number, number, number][] = [
-    [8.2, 15.5, 3.2, 9.8],
-    [7.4, 18.2, 2.6, 16.8],
-    [8.4, 21.2, 3.4, 23.4],
+  head.union(ellipse(S, S, 16 * k, 18.8 * k, 9.2 * k, 7 * k));
+  // three feathery gill fronds per side: a thick stalk ending in a round puff, fanned up and out
+  const fronds: [number, number, number, number, number][] = [
+    // base x, base y, tip x, tip y, tip radius
+    [9.5, 14.8, 5.2, 8.8, 2.1],
+    [8.0, 17.6, 3.4, 15.2, 2.0],
+    [8.4, 20.6, 3.8, 22.2, 1.8],
   ];
-  for (const [x0, y0, x1, y1] of fronds) {
-    head.union(capsule(S, S, x0 * k, y0 * k, x1 * k, y1 * k, 1.35 * k));
-    head.union(capsule(S, S, (32 - x0) * k, y0 * k, (32 - x1) * k, y1 * k, 1.35 * k));
+  for (const [x0, y0, x1, y1, r] of fronds) {
+    for (const side of [1, -1]) {
+      const X = (x: number) => (side > 0 ? x : 32 - x) * k;
+      head.union(capsule(S, S, X(x0), y0 * k, X(x1), y1 * k, 1.25 * k));
+      head.union(ellipse(S, S, X(x1), y1 * k, r * k, r * k));
+    }
   }
   b.paint(head, fg);
   // face: eyes and a tiny smile in the background colour
